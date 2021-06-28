@@ -4,6 +4,7 @@ from tensorflow.keras import mixed_precision as prec
 import elements
 import common
 import expl
+import proposal
 
 
 class Agent(common.Module):
@@ -21,14 +22,14 @@ class Agent(common.Module):
     self._dataset = dataset
     self.wm = WorldModel(self.step, config)
     self._task_behavior = ActorCritic(config, self.step, self._num_act)
-    reward = lambda f, s, a: self.wm.heads['reward'](f).mode()
+    self.reward = lambda f, s, a: self.wm.heads['reward'](f).mode()
     self._expl_behavior = dict(
         greedy=lambda: self._task_behavior,
         random=lambda: expl.Random(actspce),
         plan2explore=lambda: expl.Plan2Explore(
-            config, self.wm, self._num_act, self.step, reward),
+            config, self.wm, self._num_act, self.step, self.reward),
         model_loss=lambda: expl.ModelLoss(
-            config, self.wm, self._num_act, self.step, reward),
+            config, self.wm, self._num_act, self.step, self.reward),
     )[config.expl_behavior]()
     # Train step to initialize variables including optimizer statistics.
     self.train(next(self._dataset))
@@ -125,6 +126,8 @@ class WorldModel(common.Module):
       inp = feat if grad_head else tf.stop_gradient(feat)
       like = tf.cast(head(inp).log_prob(data[name]), tf.float32)
       likes[name] = like
+      if name == 'reward':
+        like = (like * data['reward_mask']).sum() / data['reward_mask'].sum()
       losses[name] = -like.mean()
     model_loss = sum(
         self.config.loss_scales.get(k, 1.0) * v for k, v in losses.items())
@@ -181,8 +184,21 @@ class WorldModel(common.Module):
     openl = self.heads['image'](self.rssm.get_feat(prior)).mode()
     model = tf.concat([recon[:, :5] + 0.5, openl + 0.5], 1)
     error = (model - truth + 1) / 2
+    _, _, h, w, _ = model.shape
     video = tf.concat([truth, model, error], 2)
     B, T, H, W, C = video.shape
+    # vid = tf.transpose(video, (1, 4, 2, 0, 3))
+    # vid = tf.reshape(vid, (50, 3, 3*w, 6*h))
+    # vid = tf.cast(vid, tf.float32)
+    # def log_(x):
+    #   x = (x.astype(np.float32) * 255).astype(np.uint8)
+    #   wandb.log({'agent/openl': wandb.Video(x, fps=30, format="gif")})
+    # tf.print('steps elapsed:', self._log_step)
+    # if tf.equal(tf.math.mod(self._log_step, 50), 0) and self._c['wdb']:
+    #   tools.graph_summary(
+    #       self._writer, log_, vid
+    #   )
+    # self._log_step.assign_add(1)
     return video.transpose((1, 2, 0, 3, 4)).reshape((T, H, B * W, C))
 
 

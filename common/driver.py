@@ -34,7 +34,7 @@ class Driver:
         if done:
           self._obs[i] = ob = self._envs[i].reset()
           act = {k: np.zeros(v.shape) for k, v in self._actspaces[i].items()}
-          tran = {**ob, **act, 'reward': 0.0, 'discount': 1.0, 'done': False}
+          tran = {**ob, **act, 'reward': 0.0, 'discount': 1.0, 'done': False, 'reward_mask': 1.0}
           [callback(tran, **self._kwargs) for callback in self._on_resets]
           self._eps[i] = [tran]
       obs = {k: np.stack([o[k] for o in self._obs]) for k in self._obs[0]}
@@ -47,7 +47,7 @@ class Driver:
       for i, (act, (ob, rew, done, info)) in enumerate(zip(actions, results)):
         obs = {k: self._convert(v) for k, v in obs.items()}
         disc = info.get('discount', np.array(1 - float(done)))
-        tran = {**ob, **act, 'reward': rew, 'discount': disc, 'done': done}
+        tran = {**ob, **act, 'reward': rew, 'discount': disc, 'done': done, 'reward_mask': 1.0}
         [callback(tran, **self._kwargs) for callback in self._on_steps]
         self._eps[i].append(tran)
         if done:

@@ -3,6 +3,10 @@ import re
 import tensorflow as tf
 from tensorflow_probability import distributions as tfd
 
+from collections import defaultdict
+import time 
+from contextlib import contextmanager
+
 from . import dists
 
 
@@ -72,6 +76,27 @@ def schedule(string, step):
       horizon = (1 - mix) * initial + mix * final
       return 1 - 1 / horizon
     raise NotImplementedError(string)
+
+
+class Timed:
+  def __init__(self, ):
+    self.stats = defaultdict(float)
+    self.counts = defaultdict(lambda: 1)
+
+  def clear(self):
+    self.stats = defaultdict(float)
+    self.counts = defaultdict(lambda: 1)
+  
+  @contextmanager
+  def action(self, name='noop'):
+    t0 = time.time()
+    yield
+    delta = time.time() - t0
+    self.stats[name] += delta
+    self.counts[name] += 1
+  
+  def summarize(self):
+    pass
 
 
 def lambda_return(

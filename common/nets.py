@@ -151,19 +151,30 @@ class RSSM(common.Module):
 class ConvEncoder(common.Module):
 
   def __init__(
-      self, depth=32, act=tf.nn.elu, kernels=(4, 4, 4, 4), keys=['image']):
+      self, depth=32, act=tf.nn.elu, kernels=(4, 4, 4, 4), depths=None, strides=None, keys=['image'], rect=False):
+    #TODO add rect key
     self._act = getattr(tf.nn, act) if isinstance(act, str) else act
     self._depth = depth
+    self._depths = depths
     self._kernels = kernels
+    self._rect = rect
+    self._strides = strides
     self._keys = keys
 
   @tf.function
   def __call__(self, obs):
     if tuple(self._keys) == ('image',):
       x = tf.reshape(obs['image'], (-1,) + tuple(obs['image'].shape[-3:]))
-      for i, kernel in enumerate(self._kernels):
-        depth = 2 ** i * self._depth
-        x = self._act(self.get(f'h{i}', tfkl.Conv2D, depth, kernel, 2)(x))
+      if self._rect:
+        x = self._act(self.get(f'h0', tfkl.Conv2D, 1 * self._depth, 4, 2)(x))
+        x = self._act(self.get(f'h1', tfkl.Conv2D, 2 * self._depth, 4, 2)(x))
+        x = self._act(self.get(f'h2', tfkl.Conv2D, 4 * self._depth, 4, 2)(x))
+        x = self._act(self.get(f'h3', tfkl.Conv2D, 4 * self._depth, 3, (1, 2))(x))
+        x = self._act(self.get(f'h4', tfkl.Conv2D, 8 * self._depth, 3, 1)(x))
+      else:
+        for i, kernel in enumerate(self._kernels):
+          depth = 2 ** i * self._depth
+          x = self._act(self.get(f'h{i}', tfkl.Conv2D, depth, kernel, 2)(x))
       x = tf.reshape(x, [x.shape[0], np.prod(x.shape[1:])])
       shape = tf.concat([tf.shape(obs['image'])[:-3], [x.shape[-1]]], 0)
       return tf.reshape(x, shape)
@@ -261,6 +272,34 @@ class GRUCell(tf.keras.layers.AbstractRNNCell):
     output = update * cand + (1 - update) * state
     return output, [output]
 
+
+class AddressNet(common.Module):
+  def __init__(self, hidden=200, act=tf.nn.elu):
+    super().__init__()
+    self.hidden = hidden
+    self.act = act
+    self._cell = tfkl.GRUCell(self.hidden)
+
+  def initial(self, batch_size):
+    dtype = prec.global_policy().compute_dtype
+    return self._cell.get_initial_state(None, batch_size, dtype)
+
+  def embed(self, obs, action, state=None):
+    if state is None:
+      state = self.initial(tf.shape(action)[0])
+    obs = tf.transpose(obs, [1, 0, 2])
+    action = tf.transpose(action, [1, 0, 2])
+    states = common.static_scan(
+        lambda prev, inputs: self.step(prev, *inputs),
+        (action, obs), state)
+    return states
+    
+  @tf.function
+  def step(self, prev_state, prev_action, state):
+    x = tf.concat([prev_state, prev_action, state], -1)
+    x = self.get('l1', tfkl.Dense, self.hidden, self.act)(x)
+    x, new_state = self._cell(x, [prev_state])
+    return new_state[0]
 
 class DistLayer(common.Module):
 

@@ -5,6 +5,7 @@ import os
 import pathlib
 import sys
 import warnings
+import wandb
 
 try:
   import rich.traceback
@@ -24,11 +25,25 @@ import ruamel.yaml as yaml
 import tensorflow as tf
 
 import agent
+import proposal
 import elements
 import common
 
-
-configs = pathlib.Path(sys.argv[0]).parent / 'configs.yaml'
+# parser = argparse.ArgumentParser()
+# parser.add_argument('--config', type=str, required=True)
+# parser.add_argument('--exp_name', type=str, required=True)
+# parser.add_argument('--run_name', type=str, required=True)
+# parser.add_argument('--env_name', type=str, required=True)
+# parser.add_argument('--gpu', type=int, required=True)
+# parser.add_argument('--wdb', action='store_true', default=False)
+# args = parser.parse_args()
+os.environ['CUDA_VISIBLE_DEVICES'] = '2' #str(args.gpu)
+# main(config, exp_name=args.exp_name, env_name=args.env_name,
+#       wdb=args.wdb, run_name=args.run_name, debug=args.debug)
+# if args.wdb:
+#   wandb.init(project='python-tf_dreamer', config=wdb_conf, group=exp_name, name=run_name)
+wdb = True
+configs = pathlib.Path(sys.argv[0]).parent / 'configs_addressing.yaml'
 configs = yaml.safe_load(configs.read_text())
 config = elements.Config(configs['defaults'])
 parsed, remaining = elements.FlagParser(configs=['defaults']).parse_known(
@@ -36,6 +51,8 @@ parsed, remaining = elements.FlagParser(configs=['defaults']).parse_known(
 for name in parsed.configs:
   config = config.update(configs[name])
 config = elements.FlagParser(config).parse(remaining)
+if wdb and '{run_id}' in config.logdir:
+    config.logdir = config.logdir.format(run_id=f'{wandb.run.name}_{wandb.run.id}')
 logdir = pathlib.Path(config.logdir).expanduser()
 config = config.update(
     steps=config.steps // config.action_repeat,
@@ -125,6 +142,10 @@ print('Create agent.')
 train_dataset = iter(train_replay.dataset(**config.dataset))
 eval_dataset = iter(eval_replay.dataset(**config.dataset))
 agnt = agent.Agent(config, logger, action_space, step, train_dataset)
+if 'addressing' not in config or config.addressing is False:
+  batch_proposal = proposal.TrainProposal(config, agnt, step, train_dataset)
+else:
+  batch_proposal = proposal.RetrospectiveAddressing(config, agnt, step, train_dataset)
 if (logdir / 'variables.pkl').exists():
   agnt.load(logdir / 'variables.pkl')
 else:
@@ -135,7 +156,8 @@ else:
 def train_step(tran):
   if should_train(step):
     for _ in range(config.train_steps):
-      _, mets = agnt.train(next(train_dataset))
+      _, mets = batch_proposal.train(agnt)
+      # _, mets = agnt.train(next(train_dataset))
       [metrics[key].append(value) for key, value in mets.items()]
   if should_log(step):
     for name, values in metrics.items():

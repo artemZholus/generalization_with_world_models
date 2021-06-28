@@ -27,6 +27,7 @@ RUN apt-get update && apt-get install -y \
   python3-pip \
   unrar \
   wget \
+  git \
   && apt-get clean
 
 # MuJoCo.
@@ -42,7 +43,8 @@ RUN pip3 install --no-cache-dir \
   elements \
   dm_control \
   ruamel.yaml \
-  tensorflow_probability==0.12.2
+  tensorflow_probability==0.12.2 \
+  wandb
 
 # Atari ROMS.
 RUN wget -L -nv http://www.atarimania.com/roms/Roms.rar && \
