@@ -17,6 +17,10 @@
 # docker run -it --rm --gpus all -v ~/logdir:/logdir dreamerv2 \
 #   python3 dreamerv2/train.py --logdir "/logdir/$(date +%Y%m%d-%H%M%S)" \
 #   --configs defaults dmc --task dmc_walker_walk
+# 
+# Retrospective (vscode container):
+# 
+# docker run -it --rm --gpus all -v $(pwd):/dreamerv2 -w /dreamerv2 -d -v /mnt/data/users/<yourname>:/data/ dreamerv2 tail -F file
 
 FROM tensorflow/tensorflow:2.4.2-gpu
 
