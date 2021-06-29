@@ -40,8 +40,6 @@ import common
 os.environ['CUDA_VISIBLE_DEVICES'] = '2' #str(args.gpu)
 # main(config, exp_name=args.exp_name, env_name=args.env_name,
 #       wdb=args.wdb, run_name=args.run_name, debug=args.debug)
-# if args.wdb:
-#   wandb.init(project='python-tf_dreamer', config=wdb_conf, group=exp_name, name=run_name)
 wdb = True
 configs = pathlib.Path(sys.argv[0]).parent / 'configs_addressing.yaml'
 configs = yaml.safe_load(configs.read_text())
@@ -51,8 +49,12 @@ parsed, remaining = elements.FlagParser(configs=['defaults']).parse_known(
 for name in parsed.configs:
   config = config.update(configs[name])
 config = elements.FlagParser(config).parse(remaining)
-if wdb and '{run_id}' in config.logdir:
-    config.logdir = config.logdir.format(run_id=f'{wandb.run.name}_{wandb.run.id}')
+if config.logging.wdb:
+  wandb.init(project='python-tf_dreamer', config=common.flatten_conf(config), group=config.logging.exp_name, 
+             name=config.logging.run_name)
+if config.logging.wdb and '{run_id}' in config.logdir:
+    config = config.update({'logdir': config.logdir.format(run_id=f'{wandb.run.name}_{wandb.run.id}')})
+
 logdir = pathlib.Path(config.logdir).expanduser()
 config = config.update(
     steps=config.steps // config.action_repeat,
@@ -142,9 +144,11 @@ print('Create agent.')
 train_dataset = iter(train_replay.dataset(**config.dataset))
 eval_dataset = iter(eval_replay.dataset(**config.dataset))
 agnt = agent.Agent(config, logger, action_space, step, train_dataset)
-if 'addressing' not in config or config.addressing is False:
+if 'multitask' not in config or config.multitask.mode == 'none':
   batch_proposal = proposal.TrainProposal(config, agnt, step, train_dataset)
-else:
+elif config.multitask.mode == 'raw':
+  batch_proposal = proposal.RawMultitask(config, agnt, step, train_dataset)
+elif config.multitask.mode == 'addressing':
   batch_proposal = proposal.RetrospectiveAddressing(config, agnt, step, train_dataset)
 if (logdir / 'variables.pkl').exists():
   agnt.load(logdir / 'variables.pkl')
@@ -160,6 +164,9 @@ def train_step(tran):
       # _, mets = agnt.train(next(train_dataset))
       [metrics[key].append(value) for key, value in mets.items()]
   if should_log(step):
+    average = {k: np.array(v, np.float64).mean() for k, v in metrics.items()}
+    if config.logging.wdb:
+      wandb.log(average)
     for name, values in metrics.items():
       logger.scalar(name, np.array(values, np.float64).mean())
       metrics[name].clear()

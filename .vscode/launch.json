@@ -9,8 +9,18 @@
             "type": "python",
             "request": "launch",
             "program": "dreamerv2/train.py",
+            "args": ["--configs", "defaults", "dmc", "--task", "dmc_walker_walk", 
+                "--logdir", "/data/tmp/walker_v2_{run_id}"],
+            "cwd": "/dreamerv2",
+            "console": "integratedTerminal"
+        },
+        {
+            "name": "no address",
+            "type": "python",
+            "request": "launch",
+            "program": "dreamerv2/train.py",
             "args": ["--configs", "defaults", "dmc", "debug", "--task", "dmc_walker_walk", 
-                "--logdir", "/data/tmp/walker_v21"],
+                "--logdir", "/data/tmp/walker_v212", "--multitask.mode", "none"],
             "cwd": "/dreamerv2",
             "console": "integratedTerminal"
         }

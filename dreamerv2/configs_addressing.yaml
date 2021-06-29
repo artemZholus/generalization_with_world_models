@@ -61,7 +61,7 @@ defaults:
   multitask: 
     data_path: '/data/expert_buff/w_walk_600r_1000e/episodes'
     dataset: {batch: 50, length: 50, oversample_ends: True}
-    enable: True
+    mode: addressing
   addressing:
     kind: reinforce_pred
     optimizer: {opt: adam, lr: 1e-4, eps: 1e-5, clip: 100, wd: 1e-6}
@@ -71,7 +71,7 @@ defaults:
     detach_multitask_embedding: False
     num_train_multitask_batches: 2
     num_query_multitask_batches: 2
-    addressing_probability: 0.5 # expert_batch_prop
+    addressing_probability: 1.0 # expert_batch_prop
     multitask_batch_fraction: 0.5
     
 
@@ -87,6 +87,14 @@ defaults:
   disag_offset: 1
   disag_action_cond: True
   expl_model_loss: kl
+
+  # Logging
+  logging:
+    wdb: True
+    run_name: none
+    exp_name: none
+    env_name: none
+    
 
 atari:
 
@@ -145,4 +153,4 @@ debug:
   pretrain: 1
   train_steps: 1
   dataset.batch: 10
-  dataset.length: 10
+  dataset.length: 11

@@ -98,6 +98,16 @@ class Timed:
   def summarize(self):
     pass
 
+def flatten_conf(config):
+  out = {}
+  def do(dct, pref=''):
+    for key in dct:
+      if isinstance(dct[key], dict):
+        do(dct[key], pref=pref + f'{key}/')
+      else:
+        out[pref + key] = dct[key]
+  do(config)
+  return out
 
 def lambda_return(
     reward, value, pcont, bootstrap, lambda_, axis):
