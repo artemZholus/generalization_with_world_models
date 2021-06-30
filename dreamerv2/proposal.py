@@ -137,7 +137,7 @@ class RetrospectiveAddressing(RawMultitask):
   def query_memory(self, data):
     cache = []
     logits_all = []
-    pct = self.config.addressing.multitask_batch_fraction
+    pct = self.config.multitask.multitask_batch_fraction
     for i in range(self.config.addressing.num_query_multitask_batches):
       multitask_batch = next(self.multitask_dataset)
       multitask_batch = self.wm.preprocess(multitask_batch)

@@ -105,6 +105,13 @@ def per_episode(ep, mode):
   logger.scalar(f'{mode}_return', score)
   logger.scalar(f'{mode}_length', length)
   logger.scalar(f'{mode}_eps', replay_.num_episodes)
+  if mode == 'train':
+    summ = {
+      f'{config.logging.env_name}/return': score,
+      'env_step': replay_.num_transitions,
+      f'{config.logging.env_name}/length': length
+    }
+    wandb.log(summ)
   should = {'train': should_video_train, 'eval': should_video_eval}[mode]
   if should(step):
     logger.video(f'{mode}_policy', ep['image'])
