@@ -59,8 +59,21 @@ defaults:
   slow_target_fraction: 1
 
   # Multitask
-  multitask: {mode: none}
-  addressing: False
+  multitask: 
+    data_path: none
+    dataset: {batch: 50, length: 50, oversample_ends: True}
+    mode: none
+    multitask_probability: .0
+    multitask_batch_fraction: .0
+  addressing: 
+    kind: none
+    optimizer: {opt: adam, lr: 1e-4, eps: 1e-5, clip: 100, wd: 1e-6}
+    separate_enc_for_addr: True
+    detach_cnn: False
+    detach_task_embedding: False
+    detach_multitask_embedding: False
+    num_train_multitask_batches: 2
+    num_query_multitask_batches: 2
 
   # Exploration
   expl_extr_scale: 0.0
