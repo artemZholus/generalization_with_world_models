@@ -12,6 +12,7 @@
             "args": ["--configs", "defaults", "dmc", "--task", "dmc_walker_walk", 
                 "--logdir", "/data/tmp/walker_v2_{run_id}"],
             "cwd": "/dreamerv2",
+            "justMyCode": false,
             "console": "integratedTerminal"
         },
         {

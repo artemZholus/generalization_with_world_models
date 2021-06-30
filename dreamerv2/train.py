@@ -29,18 +29,6 @@ import proposal
 import elements
 import common
 
-# parser = argparse.ArgumentParser()
-# parser.add_argument('--config', type=str, required=True)
-# parser.add_argument('--exp_name', type=str, required=True)
-# parser.add_argument('--run_name', type=str, required=True)
-# parser.add_argument('--env_name', type=str, required=True)
-# parser.add_argument('--gpu', type=int, required=True)
-# parser.add_argument('--wdb', action='store_true', default=False)
-# args = parser.parse_args()
-os.environ['CUDA_VISIBLE_DEVICES'] = '2' #str(args.gpu)
-# main(config, exp_name=args.exp_name, env_name=args.env_name,
-#       wdb=args.wdb, run_name=args.run_name, debug=args.debug)
-wdb = True
 configs = pathlib.Path(sys.argv[0]).parent / 'configs_addressing.yaml'
 configs = yaml.safe_load(configs.read_text())
 config = elements.Config(configs['defaults'])
@@ -49,6 +37,7 @@ parsed, remaining = elements.FlagParser(configs=['defaults']).parse_known(
 for name in parsed.configs:
   config = config.update(configs[name])
 config = elements.FlagParser(config).parse(remaining)
+os.environ['CUDA_VISIBLE_DEVICES'] = str(config.gpu) #str(args.gpu)
 if config.logging.wdb:
   wandb.init(project='python-tf_dreamer', config=common.flatten_conf(config), group=config.logging.exp_name, 
              name=config.logging.run_name)
@@ -165,8 +154,10 @@ def train_step(tran):
       [metrics[key].append(value) for key, value in mets.items()]
   if should_log(step):
     average = {k: np.array(v, np.float64).mean() for k, v in metrics.items()}
+    average['env_step'] = train_replay.num_transitions
     if config.logging.wdb:
       wandb.log(average)
+    print('\n'.join(batch_proposal.timed.summarize()))
     for name, values in metrics.items():
       logger.scalar(name, np.array(values, np.float64).mean())
       metrics[name].clear()

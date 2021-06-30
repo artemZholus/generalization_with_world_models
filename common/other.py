@@ -96,7 +96,17 @@ class Timed:
     self.counts[name] += 1
   
   def summarize(self):
-    pass
+    total = 'total time: '
+    per_step = 'per step time: '
+    pcts = 'relative time: '
+    total_t = sum(self.stats.values())
+    for (k, t), c in zip(self.stats.items(), self.counts.values()):
+        total += f'total {k}: {t:.1f} s; '
+        per_step += f'{k} step: {t / c:.3f} s; '
+        pcts += f'{k}: {t / total_t * 100:.1f} %; '
+    return total, per_step, pcts
+    
+
 
 def flatten_conf(config):
   out = {}

@@ -72,9 +72,12 @@ class RawMultitask(TrainProposal):
 
   def propose_batch(self, agnt, metrics=None):
     task_batch = next(self.dataset)
-    multitask_batch = next(self.multitask_dataset)
-    pct = self.config.addressing.multitask_batch_fraction
-    return self.merge_batches(multitask_batch, task_batch, pct)
+    if np.random.rand() < self.config.multitask.multitask_probability:
+      multitask_batch = next(self.multitask_dataset)
+      pct = self.config.multitask.multitask_batch_fraction
+      return self.merge_batches(multitask_batch, task_batch, pct)
+    else:
+      return task_batch
   
 
 class RetrospectiveAddressing(RawMultitask):
@@ -107,7 +110,7 @@ class RetrospectiveAddressing(RawMultitask):
       batch = self.wm.preprocess(batch)
       batch['action'] = self._cast(batch['action'])
     randn = np.random.rand()
-    if randn < self.config.addressing.addressing_probability:
+    if randn < self.config.multitask.multitask_probability:
       with self.timed.action('query'):
         batch = self.query_memory(batch)
       # agent_only = self.addr_agent_only #tf.constant(self.addr_agent_only)
