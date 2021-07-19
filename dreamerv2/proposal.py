@@ -48,22 +48,28 @@ class RawMultitask(TrainProposal):
     keys = ['image', 'action', 'reward', 'discount']
     task_batch['reward'] = self._cast(task_batch['reward'])
     task_batch['discount'] = self._cast(task_batch['discount'])
+    # calculate lengths of task and multitask parts of batch,
+    # implicitly asserting that multitask_batch and task_batch are of the same length
+    batch_len = len(task_batch['image'])
+    task_part_len = int(math.floor(batch_len * (1-pct)))
+    multitask_part_len = batch_len - task_part_len
     multitask_batch = {
       k: tf.concat([
-        task_batch[k], tf.stop_gradient(multitask_batch[k])[:int(len(multitask_batch[k]) * pct)]], 
+        task_batch[k][:task_part_len], 
+        tf.stop_gradient(multitask_batch[k])[:multitask_part_len]], 
         0) 
       for k in keys
     }
-    discount = task_batch['discount'][:int(len(task_batch['discount']) * (1 - pct))]
+    discount = task_batch['discount']
     multitask_batch['discount'] = tf.concat(
-      [discount, tf.ones_like(discount)], 0
+      [discount[:task_part_len], tf.ones_like(discount)[:multitask_part_len]], 0
     )
     # mask_fun = tf.zeros if self.mask_other_task_rewards else tf.ones
-    mask_fun = tf.zeros
+    mask_fun = tf.zeros_like
     length = multitask_batch['reward'].shape[1]
     multitask_batch['reward_mask'] = tf.concat([
-      tf.ones((int(math.floor(len(multitask_batch['reward']) * (1 - pct))), length), dtype=multitask_batch['reward'].dtype),
-      mask_fun((int(math.ceil(len(multitask_batch['reward']) * pct)), length), dtype=multitask_batch['reward'].dtype)
+      tf.ones_like(multitask_batch['reward'])[:task_part_len],
+      mask_fun(multitask_batch['reward'])[:multitask_part_len]
     ], 0)
     multitask_batch['reward_mask'] = tf.cast(multitask_batch['reward_mask'], tf.float32)
     multitask_batch['action'] = tf.cast(multitask_batch['action'], tf.float32)
@@ -145,13 +151,12 @@ class RetrospectiveAddressing(RawMultitask):
       cache.append(multitask_batch)
       logits = self.infer_address(data, multitask_batch)
       logits_all.append(tf.stop_gradient(logits))
-    multitask_batch = self.calc_query(data, cache, logits_all, pct)
+    multitask_batch = self.calc_query(cache, logits_all)
     return self.merge_batches(multitask_batch, data, pct)
 
   @tf.function
-  def calc_query(self, data, expert, logits, pct, replacement=True):
+  def calc_query(self, expert, logits, replacement=True):
     keys = ['image', 'action', 'reward', 'discount']
-    data = {k: data[k][:int(len(data[k]) * (1 - pct))] for k in keys}
     logits = tf.concat(logits, -1)
     log_probs = tf.nn.log_softmax(logits, axis=-1)
     if replacement:
