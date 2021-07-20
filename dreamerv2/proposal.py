@@ -46,8 +46,7 @@ class RawMultitask(TrainProposal):
     multitask_batch = tf.nest.map_structure(tf.identity, multitask_batch)
     task_batch = tf.nest.map_structure(tf.identity, task_batch)
     keys = ['image', 'action', 'reward', 'discount']
-    task_batch['reward'] = self._cast(task_batch['reward'])
-    task_batch['discount'] = self._cast(task_batch['discount'])
+    task_batch['action'] = self._cast(task_batch['action'])
     # calculate lengths of task and multitask parts of batch,
     # implicitly asserting that multitask_batch and task_batch are of the same length
     batch_len = len(task_batch['image'])
@@ -273,7 +272,7 @@ class RetrospectiveAddressing(RawMultitask):
       metrics['multitask_batch_pred_reward'] = tf.reduce_mean(rewards)
     metrics['multitask_batch_true_reward'] = tf.reduce_mean(tf.reduce_sum(selected_rewards, 1))
     metrics['multitask_batch_expected_reward'] = tf.reduce_mean(
-      tf.reduce_sum(tf.exp(log_probs) @ multitask_rewards, 1)
+      tf.reduce_sum(tf.exp(log_probs) @ self._cast(multitask_rewards), 1)
     )
     metrics['address_net_norm'] = addr_norm['addr_grad_norm']
     return metrics
