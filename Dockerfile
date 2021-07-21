@@ -66,6 +66,14 @@ RUN cat /root/.mujoco/mjkey.txt
 ENV TF_XLA_FLAGS --tf_xla_auto_jit=2
 COPY . /app
 WORKDIR /app
+
+# wandb credentials
+ARG NETRC_KEY=""
+RUN touch $HOME/.netrc \
+  && echo "machine api.wandb.ai" >> $HOME/.netrc \
+  && echo "  login user" >> $HOME/.netrc \
+  && echo "  password $NETRC_KEY" >> $HOME/.netrc 
+
 CMD [ \
   "python3", "dreamerv2/train.py", \
   "--logdir", "/logdir/$(date +%Y%m%d-%H%M%S)", \
