@@ -6,10 +6,11 @@
     "configurations": [
         {
             "name": "train",
+            "env": {"CUDA_VISIBLE_DEVICES": "0"},
             "type": "python",
             "request": "launch",
             "program": "dreamerv2/train.py",
-            "args": ["--configs", "defaults", "dmc", "--task", "dmc_walker_walk", 
+            "args": ["--configs", "defaults", "dmc", "v1", "--task", "dmc_walker_walk", 
                 "--logdir", "/data/tmp/walker_v2_{run_id}"],
             "cwd": "/dreamerv2",
             "justMyCode": false,

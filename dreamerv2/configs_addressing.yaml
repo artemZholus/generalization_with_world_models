@@ -99,18 +99,23 @@ v1:
   train_steps: 100
   time_limit: 1000
   action_repeat: 1
+  log_every: 1e3
+  pred_discount: False
+  grad_heads: [image, reward]
   rssm: {hidden: 200, deter: 200, stoch: 30, discrete: False, act: elu, std_act: sigmoid2, min_std: 0.1}
   encoder: {depth: 32, act: relu, kernels: [4, 4, 4, 4], keys: [image], rect: False}
   decoder: {depth: 32, act: relu, kernels: [5, 5, 6, 6]}
   reward_head: {layers: 2, units: 400, act: elu, dist: mse}
   discount_head: {layers: 3, units: 400, act: elu, dist: binary}
+  loss_scales.kl: 0.1
 
   kl: {free: 3.0, forward: False, balance: 0.5, free_avg: True}
-  model_opt: {opt: adam, lr: 6e-4, eps: 1e-5, clip: 100, wd: 1e-6}
+  model_opt: {opt: adam, lr: 6e-4, eps: 1e-5, clip: 100, wd: 0.0}
 
   critic: {layers: 3, units: 400, act: elu, dist: mse}
-  actor_opt: {opt: adam, lr: 8e-5, eps: 1e-5, clip: 100, wd: 1e-6}
-  critic_opt: {opt: adam, lr: 8e-5, eps: 1e-5, clip: 100, wd: 1e-6}
+  actor_ent: 0.0
+  actor_opt: {opt: adam, lr: 8e-5, eps: 1e-5, clip: 100, wd: 0.0}
+  critic_opt: {opt: adam, lr: 8e-5, eps: 1e-5, clip: 100, wd: 0.0}
 
   actor_grad: dynamics
 

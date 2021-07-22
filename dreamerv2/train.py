@@ -23,6 +23,7 @@ sys.path.append(str(pathlib.Path(__file__).parent.parent))
 import numpy as np
 import ruamel.yaml as yaml
 import tensorflow as tf
+from tqdm import tqdm
 
 import agent
 import proposal
@@ -150,7 +151,7 @@ if (logdir / 'variables.pkl').exists():
   agnt.load(logdir / 'variables.pkl')
 else:
   config.pretrain and print('Pretrain agent.')
-  for _ in range(config.pretrain):
+  for _ in tqdm(range(config.pretrain)):
     agnt.train(next(train_dataset))
 
 def train_step(tran):

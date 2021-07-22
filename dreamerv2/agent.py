@@ -32,7 +32,9 @@ class Agent(common.Module):
             config, self.wm, self._num_act, self.step, self.reward),
     )[config.expl_behavior]()
     # Train step to initialize variables including optimizer statistics.
-    self.train(next(self._dataset))
+    data = next(self._dataset)
+    self.train(data)
+    pass
 
   @tf.function
   def policy(self, obs, state=None, mode='train'):
