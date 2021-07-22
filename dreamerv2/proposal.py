@@ -46,12 +46,14 @@ class RawMultitask(TrainProposal):
     multitask_batch = tf.nest.map_structure(tf.identity, multitask_batch)
     task_batch = tf.nest.map_structure(tf.identity, task_batch)
     keys = ['image', 'action', 'reward', 'discount']
-    task_batch['action'] = self._cast(task_batch['action'])
+    for k in keys:
+      task_batch[k] = self._cast(task_batch[k])
     # calculate lengths of task and multitask parts of batch,
     # implicitly asserting that multitask_batch and task_batch are of the same length
     batch_len = len(task_batch['image'])
     task_part_len = int(math.floor(batch_len * (1-pct)))
     multitask_part_len = batch_len - task_part_len
+    
     multitask_batch = {
       k: tf.concat([
         task_batch[k][:task_part_len], 
@@ -127,6 +129,7 @@ class RetrospectiveAddressing(RawMultitask):
     post, _ = self.wm.rssm.observe(observations, actions)
     feat = self.wm.rssm.get_feat(post)
     rewards = self._cast(self.reward(feat, post, actions))
+    #transpose?
     return tf.reduce_sum(rewards, 1) if reduce else (rewards, feat)
 
   @tf.function
