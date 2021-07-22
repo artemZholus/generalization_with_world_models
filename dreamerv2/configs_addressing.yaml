@@ -119,7 +119,6 @@ v1:
 
   actor_grad: dynamics
 
-  actor_ent: '0.0'
   slow_target: False
 
 addressing:
