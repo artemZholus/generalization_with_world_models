@@ -124,7 +124,7 @@ v1:
 addressing:
   multitask: 
     data_path: '/data/expert_buff/w_walk_600r_1000e/episodes'
-    dataset: {batch: 50, length: 50, oversample_ends: True}
+    dataset: {batch: 51, length: 50, oversample_ends: True}
     mode: addressing
     multitask_probability: 0.5 # expert_batch_prop
     multitask_batch_fraction: 0.5
@@ -189,10 +189,10 @@ debug:
 
   jit: False
   time_limit: 100
-  eval_every: 300
-  log_every: 300
+  # eval_every: 300
+  # log_every: 300
   prefill: 100
   pretrain: 1
-  train_steps: 1
-  dataset.batch: 10
-  dataset.length: 11
+  # train_steps: 1
+  dataset.batch: 12
+  dataset.length: 50
