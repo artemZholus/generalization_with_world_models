@@ -112,7 +112,8 @@ def per_episode(ep, mode):
       'env_step': replay_.num_transitions,
       f'{config.logging.env_name}/length': length
     }
-    wandb.log(summ)
+    if config.logging.wdb:
+      wandb.log(summ)
   should = {'train': should_video_train, 'eval': should_video_eval}[mode]
   if should(step):
     logger.video(f'{mode}_policy', ep['image'])

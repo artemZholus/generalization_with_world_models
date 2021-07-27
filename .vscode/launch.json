@@ -17,6 +17,18 @@
             "console": "integratedTerminal"
         },
         {
+            "name": "addressing",
+            "env": {"CUDA_VISIBLE_DEVICES": "0"},
+            "type": "python",
+            "request": "launch",
+            "program": "dreamerv2/train.py",
+            "args": ["--configs", "defaults", "dmc", "v1", "adressing", "--task", "dmc_walker_run", 
+                "--logdir", "/data/tmp/walker_v2_{run_id}"],
+            "cwd": "/dreamerv2",
+            "justMyCode": false,
+            "console": "integratedTerminal"
+        },
+        {
             "name": "no address",
             "type": "python",
             "request": "launch",

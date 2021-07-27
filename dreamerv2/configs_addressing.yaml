@@ -138,6 +138,14 @@ addressing:
     num_train_multitask_batches: 2
     num_query_multitask_batches: 2
 
+addressing_raw:
+  multitask: 
+    data_path: '/data/expert_buff/w_walk_600r_1000e/episodes'
+    dataset: {batch: 50, length: 50, oversample_ends: True}
+    mode: raw
+    multitask_probability: 0.5 # expert_batch_prop
+    multitask_batch_fraction: 0.5
+
 atari:
 
   task: atari_pong

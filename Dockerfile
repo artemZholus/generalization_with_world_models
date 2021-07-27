@@ -32,6 +32,7 @@ RUN apt-get update && apt-get install -y \
   unrar \
   wget \
   git \
+  vim \
   && apt-get clean
 
 # MuJoCo.

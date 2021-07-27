@@ -18,6 +18,7 @@ class TrainProposal:
       self.config = config
       self.dataset = dataset
       self.timed = common.Timed()
+      self._cast = lambda x: tf.cast(x, prec.global_policy().compute_dtype)
 
     def train(self, agnt):
       metrics = {}
@@ -56,21 +57,20 @@ class RawMultitask(TrainProposal):
     
     multitask_batch = {
       k: tf.concat([
-        task_batch[k][:task_part_len], 
-        tf.stop_gradient(multitask_batch[k])[:multitask_part_len]], 
+        task_batch[k], tf.stop_gradient(multitask_batch[k])[:int(len(multitask_batch[k]) * pct)]], 
         0) 
       for k in keys
     }
-    discount = task_batch['discount']
+    discount = task_batch['discount'][:int(len(task_batch['discount']) * (1 - pct))]
     multitask_batch['discount'] = tf.concat(
-      [discount[:task_part_len], tf.ones_like(discount)[:multitask_part_len]], 0
+      [discount, tf.ones_like(discount)], 0
     )
     # mask_fun = tf.zeros if self.mask_other_task_rewards else tf.ones
-    mask_fun = tf.zeros_like
+    mask_fun = tf.zeros
     length = multitask_batch['reward'].shape[1]
     multitask_batch['reward_mask'] = tf.concat([
-      tf.ones_like(multitask_batch['reward'])[:task_part_len],
-      mask_fun(multitask_batch['reward'])[:multitask_part_len]
+      tf.ones((int(math.floor(len(multitask_batch['reward']) * (1 - pct))), length), dtype=multitask_batch['reward'].dtype),
+      mask_fun((int(math.ceil(len(multitask_batch['reward']) * pct)), length), dtype=multitask_batch['reward'].dtype)
     ], 0)
     multitask_batch['reward_mask'] = tf.cast(multitask_batch['reward_mask'], tf.float32)
     multitask_batch['action'] = tf.cast(multitask_batch['action'], tf.float32)
@@ -92,7 +92,6 @@ class RetrospectiveAddressing(RawMultitask):
     super().__init__(config, agent, step, dataset)
     self.addressing = common.AddressNet()
     self.encoder = self.wm.encoder
-    self._cast = lambda x: tf.cast(x, prec.global_policy().compute_dtype)
     
     if config.addressing.separate_enc_for_addr:
         self._encoder = common.ConvEncoder(config.encoder.depth, config.encoder.act, rect=config.encoder.rect)
