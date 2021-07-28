@@ -174,7 +174,7 @@ class RetrospectiveAddressing(RawMultitask):
       for k in keys
     }
     multitask_batch = {k: tf.gather(multitask_batch[k], selection)
-                    for k in keys}
+                       for k in keys}
     return multitask_batch
 
   def select(self, logits, multitask_embedding, multitask_batch, soft):
