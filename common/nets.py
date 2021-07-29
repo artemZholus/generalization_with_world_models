@@ -311,6 +311,7 @@ class DyneAddressNet(common.Module):
     self.act = act
     self.obs_strategy = obs_strategy
     self._cell = tfkl.GRUCell(self.hidden)
+    self._cast = lambda x: tf.cast(x, prec.global_policy().compute_dtype)
 
   def initial(self, batch_size):
     dtype = prec.global_policy().compute_dtype
@@ -331,11 +332,11 @@ class DyneAddressNet(common.Module):
 
   @tf.function
   def step(self, prev_state, prev_action, state):
-    prev_action = self.dyne.embed_action(prev_action)
+    _, prev_action, _ = self.dyne.embed_action(prev_action)
     prev_action = tf.repeat(prev_action, self.dyne.action_repeat, 1)
-    state = self.dyne.embed_obs(state)
-    prev_action = tf.stop_gradient(prev_action)
-    state = tf.stop_gradient(state)
+    _, state, _ = self.dyne.embed_obs(state)
+    prev_action = tf.stop_gradient(self._cast(prev_action))
+    state = tf.stop_gradient(self._cast(state))
     x = tf.concat([prev_state, prev_action, state], -1)
     x = self.get('l1', tfkl.Dense, self.hidden, self.act)(x)
     x, new_state = self._cell(x, [prev_state])

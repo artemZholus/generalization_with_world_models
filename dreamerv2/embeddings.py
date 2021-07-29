@@ -66,7 +66,7 @@ class DyneTrainer:
                     self.config.state_kld_scale * state_kld
         return dyne_loss, metrics
 
-    #@tf.function
+    @tf.function
     def preprocess(self, obs):
         dtype = prec.global_policy().compute_dtype
         obs = obs.copy()
@@ -84,16 +84,16 @@ class DyneEncoder(common.Module):
         self.action_net = config.action_net
         self.recon_net = config.recon_net
 
-    #@tf.function
+    @tf.function
     def __call__(self, state, action):
         z, mean, logvar = self.embed_action(action)
         return self.predict_state(state, z), mean, logvar
 
-    #@tf.function
+    @tf.function
     def embed_obs(self, obs):
         return obs
 
-    #@tf.function
+    @tf.function
     def embed_action(self, action):
         # assume action is tf.Tensor with shape
         # [batch_size, traj_len, action_dim]
@@ -107,7 +107,7 @@ class DyneEncoder(common.Module):
                         **self.action_net)(action)
         return z.sample(), z.mean(), tf.math.log(z.variance())
 
-    #@tf.function
+    @tf.function
     def predict_state(self, state, z):
         # assume state is tf.Tensor with shape
         # [batch_size, *obs_dim]
@@ -133,7 +133,7 @@ class SADyneEncoder(DyneEncoder):
         self.obs_net_dist = common.MLP(self.obs_embed_size, **config.obs_net_dist)
         self.image_net = common.ConvDecoder(**config.image_net)
 
-    #@tf.function
+    @tf.function
     def __call__(self, state, action):
         s, s_mean, s_logvar = self.embed_obs(state)
         z, z_mean, z_logvar = self.embed_action(action)
@@ -141,22 +141,22 @@ class SADyneEncoder(DyneEncoder):
         pred_state = self.deconv_obs(pred_state)
         return pred_state, s_mean, s_logvar, z_mean, z_logvar
 
-    #@tf.function
+    @tf.function
     def conv_obs(self, obs):
         conved_obs = self.obs_net_encoder(obs)
         return conved_obs
 
-    #@tf.function
+    @tf.function
     def deconv_obs(self, obs):
         image = self.image_net(obs)
         return image.mode()
     
-    #@tf.function
+    @tf.function
     def embed_obs(self, obs):
         out = self.obs_net_dist(obs)
         return out.sample(), out.mean(), tf.math.log(out.variance())
 
-    #@tf.function
+    @tf.function
     def predict_state(self, state, z):
         # assume state is tf.Tensor with shape
         # [batch_size, *obs_dim]

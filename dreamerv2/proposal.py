@@ -194,7 +194,7 @@ class RetrospectiveAddressing(RawMultitask):
       actions = tf.gather(multitask_batch['action'], selection)
     return dist, selection, embedding, actions, rewards
 
-  #@tf.function
+  @tf.function
   def train_addressing(self, task_batch, multitask_batches):
     task_batch = tf.nest.map_structure(tf.identity, task_batch)
     multitask_batches = tf.nest.map_structure(tf.identity, multitask_batches)

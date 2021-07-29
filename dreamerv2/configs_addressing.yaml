@@ -197,13 +197,17 @@ addressing_dyne:
       image_net: {shape: [64, 64, 3], depth: 48, act: elu, kernels: [5, 5, 6, 6]}
     trainer:
       mode: sa_dyne
-      training_steps: 50
+      training_steps: 10000
       log_every: 10
       action_kld_scale: 1e-2
       state_kld_scale: 1e-2
   multitask:
+    data_path: '/data/expert_buff/w_walk_1000e/episodes'
     mode: addressing_dyne
     dataset: {batch: 50, length: 52, oversample_ends: True}
+  addressing:
+    detach_cnn: True
+    separate_enc_for_addr: False
 
 
 atari:
