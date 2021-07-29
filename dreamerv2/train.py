@@ -182,7 +182,7 @@ def train_step(tran):
       # _, mets = agnt.train(next(train_dataset))
       [metrics[key].append(value) for key, value in mets.items()]
   if should_log(step):
-    average = {k: np.array(v, np.float64).mean() for k, v in metrics.items()}
+    average = {f'agent/{k}': np.array(v, np.float64).mean() for k, v in metrics.items()}
     average['env_step'] = train_replay.num_transitions
     if config.logging.wdb:
       wandb.log(average)

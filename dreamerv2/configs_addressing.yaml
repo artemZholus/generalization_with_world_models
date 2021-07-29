@@ -58,6 +58,8 @@ defaults:
   slow_target_update: 100
   slow_target_fraction: 1
 
+  
+
   # Multitask
   multitask: 
     data_path: none
@@ -159,9 +161,21 @@ addressing:
     num_train_multitask_batches: 2
     num_query_multitask_batches: 2
 
-addressing_raw:
+exp_w_stand:
   multitask: 
-    data_path: '/data/expert_buff/w_walk_1000e/episodes'
+    data_path: '/data/expert_buff/w_stand_1000e/episodes'
+
+exp_w_walk:
+  multitask: 
+    data_path: '/data/expert_buff/w_walk_600r_1000e/episodes'
+
+exp_w_run:
+  multitask: 
+    data_path: '/data/expert_buff/w_run_500r_1000e/episodes'
+
+raw_multitask:
+  multitask: 
+    data_path: '/data/expert_buff/w_walk_600r_1000e/episodes'
     dataset: {batch: 50, length: 50, oversample_ends: True}
     mode: raw
     multitask_probability: 0.5 # expert_batch_prop
