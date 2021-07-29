@@ -152,7 +152,7 @@ exp_w_run:
   multitask: 
     data_path: '/data/expert_buff/w_run_500r_1000e/episodes'
 
-addressing_raw:
+raw_multitask:
   multitask: 
     data_path: '/data/expert_buff/w_walk_600r_1000e/episodes'
     dataset: {batch: 50, length: 50, oversample_ends: True}

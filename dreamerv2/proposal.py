@@ -44,17 +44,19 @@ class RawMultitask(TrainProposal):
   
   @tf.function
   def merge_batches(self, multitask_batch, task_batch, pct):
+    # copy batches
     multitask_batch = tf.nest.map_structure(tf.identity, multitask_batch)
     task_batch = tf.nest.map_structure(tf.identity, task_batch)
     keys = ['image', 'action', 'reward', 'discount']
-    for k in keys:
-      task_batch[k] = self._cast(task_batch[k])
+    # for k in keys:
+    #   task_batch[k] = self._cast(task_batch[k])
     # calculate lengths of task and multitask parts of batch,
     # implicitly asserting that multitask_batch and task_batch are of the same length
     batch_len = len(task_batch['image'])
     task_part_len = int(math.floor(batch_len * (1-pct)))
     multitask_part_len = batch_len - task_part_len
-    
+    for k in ['action', 'reward', 'discount']:
+      multitask_batch[k] = tf.cast(multitask_batch[k], tf.float32)
     multitask_batch = {
       k: tf.concat([
         task_batch[k], tf.stop_gradient(multitask_batch[k])[:int(len(multitask_batch[k]) * pct)]], 
@@ -73,8 +75,6 @@ class RawMultitask(TrainProposal):
       mask_fun((int(math.ceil(len(multitask_batch['reward']) * pct)), length), dtype=multitask_batch['reward'].dtype)
     ], 0)
     multitask_batch['reward_mask'] = tf.cast(multitask_batch['reward_mask'], tf.float32)
-    multitask_batch['action'] = tf.cast(multitask_batch['action'], tf.float32)
-    multitask_batch['reward'] = tf.cast(multitask_batch['reward'], tf.float32)
     return multitask_batch
 
   def propose_batch(self, agnt, metrics=None):
@@ -113,12 +113,13 @@ class RetrospectiveAddressing(RawMultitask):
     # addressing_probability == expert_batch_prop
     with self.timed.action('batch'):
       batch = next(self.dataset)
-      batch = self.wm.preprocess(batch)
-      batch['action'] = self._cast(batch['action'])
+      addr_batch = tf.nest.map_structure(tf.identity, batch)
+      addr_batch = self.wm.preprocess(addr_batch)
+      addr_batch['action'] = self._cast(addr_batch['action'])
     randn = np.random.rand()
     if randn < self.config.multitask.multitask_probability:
       with self.timed.action('query'):
-        batch = self.query_memory(batch)
+        batch = self.query_memory(addr_batch, batch)
       # agent_only = self.addr_agent_only #tf.constant(self.addr_agent_only)
     if metrics is not None:
       metrics.update(mets)
@@ -141,16 +142,17 @@ class RetrospectiveAddressing(RawMultitask):
     logits = state @ tf.transpose(memory)
     return logits
 
-  def query_memory(self, data):
+  def query_memory(self, addr_batch, data):
     cache = []
     logits_all = []
     pct = self.config.multitask.multitask_batch_fraction
     for i in range(self.config.addressing.num_query_multitask_batches):
       multitask_batch = next(self.multitask_dataset)
-      multitask_batch = self.wm.preprocess(multitask_batch)
-      multitask_batch['action'] = self._cast(multitask_batch['action'])
+      addr_mt_batch = tf.nest.map_structure(tf.identity, multitask_batch)
+      addr_mt_batch = self.wm.preprocess(addr_mt_batch)
+      addr_mt_batch['action'] = self._cast(addr_mt_batch['action'])
       cache.append(multitask_batch)
-      logits = self.infer_address(data, multitask_batch)
+      logits = self.infer_address(addr_batch, addr_mt_batch)
       logits_all.append(tf.stop_gradient(logits))
     multitask_batch = self.calc_query(cache, logits_all)
     return self.merge_batches(multitask_batch, data, pct)
@@ -271,9 +273,9 @@ class RetrospectiveAddressing(RawMultitask):
     metrics['address_entropy'] = dist.entropy().mean()
     metrics['address_loss'] = loss
     if kind == 'value' or 'pred' in kind:
-      metrics['multitask_batch_pred_reward'] = tf.reduce_mean(rewards)
-    metrics['multitask_batch_true_reward'] = tf.reduce_mean(tf.reduce_sum(selected_rewards, 1))
-    metrics['multitask_batch_expected_reward'] = tf.reduce_mean(
+      metrics['expert_batch_pred_reward'] = tf.reduce_mean(rewards)
+    metrics['expert_batch_true_reward'] = tf.reduce_mean(tf.reduce_sum(selected_rewards, 1))
+    metrics['expert_batch_expected_reward'] = tf.reduce_mean(
       tf.reduce_sum(tf.exp(log_probs) @ self._cast(multitask_rewards), 1)
     )
     metrics['address_net_norm'] = addr_norm['addr_grad_norm']

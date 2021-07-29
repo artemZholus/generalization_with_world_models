@@ -167,6 +167,7 @@ class WorldModel(common.Module):
   def preprocess(self, obs):
     dtype = prec.global_policy().compute_dtype
     obs = obs.copy()
+    # second preprocessing for multitask ???
     obs['image'] = tf.cast(obs['image'], dtype) / 255.0 - 0.5
     obs['reward'] = getattr(tf, self.config.clip_rewards)(obs['reward'])
     if 'discount' in obs:
