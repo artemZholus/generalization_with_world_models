@@ -52,7 +52,7 @@ class Replay:
         self._episodes, length, oversample_ends)
     dataset = tf.data.Dataset.from_generator(generator, types, shapes)
     dataset = dataset.batch(batch, drop_remainder=True)
-    dataset = dataset.prefetch(10)
+    dataset = dataset.prefetch(50)
     return dataset
 
   def _length(self, episode):

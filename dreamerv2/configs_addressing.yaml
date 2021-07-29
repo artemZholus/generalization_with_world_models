@@ -75,6 +75,27 @@ defaults:
     num_train_multitask_batches: 2
     num_query_multitask_batches: 2
 
+  # Dyne
+  embeddings:
+    data_path: none
+    traj_len: 4
+    dataset: {batch: 128, oversample_ends: True}
+    dyne:
+      act_embed_size: 6
+      obs_embed_size: 100
+      action_net: {layers: 2, units: 400, act: selu, dist: logvar_normal}  
+      obs_net_encoder: {depth: 48, act: elu, kernels: [4, 4, 4, 4], keys: [image], rect: False}
+      obs_net_dist: {layers: 0, units: 400, act: relu, dist: logvar_normal}
+      recon_net: {layers: 2, units: 400, act: relu, dist: normal}
+      image_net: {shape: [64, 64, 3], depth: 48, act: elu, kernels: [5, 5, 6, 6]}
+    trainer:
+      mode: none
+      training_steps: 10000
+      log_every: 10
+      dyne_opt: {opt: adam, lr: 3e-4, eps: 1e-5, clip: 100, wd: 1e-6}
+      action_kld_scale: 1e-2
+      state_kld_scale: 1e-2
+
   # Exploration
   expl_extr_scale: 0.0
   expl_intr_scale: 1.0
@@ -137,6 +158,39 @@ addressing:
     detach_multitask_embedding: False
     num_train_multitask_batches: 2
     num_query_multitask_batches: 2
+
+addressing_raw:
+  multitask: 
+    data_path: '/data/expert_buff/w_walk_1000e/episodes'
+    dataset: {batch: 50, length: 50, oversample_ends: True}
+    mode: raw
+    multitask_probability: 0.5 # expert_batch_prop
+    multitask_batch_fraction: 0.5
+
+addressing_dyne:
+  dataset: {batch: 50, length: 52, oversample_ends: True}
+  embeddings:
+    data_path: '/data/expert_buff/w_walk_1000e/episodes'
+    traj_len: 4
+    dataset: {batch: 128, oversample_ends: True}
+    dyne:
+      act_embed_size: 6
+      obs_embed_size: 100
+      action_net: {layers: 2, units: 400, act: selu, dist: logvar_normal}  
+      obs_net_encoder: {depth: 48, act: elu, kernels: [4, 4, 4, 4], keys: [image], rect: False}
+      obs_net_dist: {layers: 0, units: 400, act: relu, dist: logvar_normal}
+      recon_net: {layers: 2, units: 400, act: relu, dist: normal}
+      image_net: {shape: [64, 64, 3], depth: 48, act: elu, kernels: [5, 5, 6, 6]}
+    trainer:
+      mode: sa_dyne
+      training_steps: 50
+      log_every: 10
+      action_kld_scale: 1e-2
+      state_kld_scale: 1e-2
+  multitask:
+    mode: addressing_dyne
+    dataset: {batch: 50, length: 52, oversample_ends: True}
+
 
 atari:
 

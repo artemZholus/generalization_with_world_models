@@ -47,7 +47,7 @@ class RawMultitask(TrainProposal):
     task_batch = tf.nest.map_structure(tf.identity, task_batch)
     keys = ['image', 'action', 'reward', 'discount']
     for k in keys:
-      task_batch[k] = self._cast(task_batch[k])
+      multitask_batch[k] = tf.cast(multitask_batch[k], task_batch[k].dtype)
     # calculate lengths of task and multitask parts of batch,
     # implicitly asserting that multitask_batch and task_batch are of the same length
     batch_len = len(task_batch['image'])
@@ -193,7 +193,7 @@ class RetrospectiveAddressing(RawMultitask):
       actions = tf.gather(multitask_batch['action'], selection)
     return dist, selection, embedding, actions, rewards
 
-  @tf.function
+  #@tf.function
   def train_addressing(self, task_batch, multitask_batches):
     task_batch = tf.nest.map_structure(tf.identity, task_batch)
     multitask_batches = tf.nest.map_structure(tf.identity, multitask_batches)
@@ -279,3 +279,10 @@ class RetrospectiveAddressing(RawMultitask):
     )
     metrics['address_net_norm'] = addr_norm['addr_grad_norm']
     return metrics
+
+
+class DyneRetrospectiveAddressing(RetrospectiveAddressing):
+  def __init__(self, config, agent, step, dataset, dyne):
+    super().__init__(config, agent, step, dataset)
+    self.encoder = dyne.obs_net_encoder
+    self.addressing = common.DyneAddressNet(dyne)

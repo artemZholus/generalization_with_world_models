@@ -301,6 +301,55 @@ class AddressNet(common.Module):
     x, new_state = self._cell(x, [prev_state])
     return new_state[0]
 
+class DyneAddressNet(common.Module):
+  def __init__(self, dyne, hidden=200, act=tf.nn.elu, obs_strategy='skip'):
+    super().__init__()
+    self.dyne = dyne
+    self.action_size = dyne.action_size
+    self.traj_len = dyne.traj_len
+    self.hidden = hidden
+    self.act = act
+    self.obs_strategy = obs_strategy
+    self._cell = tfkl.GRUCell(self.hidden)
+
+  def initial(self, batch_size):
+    dtype = prec.global_policy().compute_dtype
+    return self._cell.get_initial_state(None, batch_size, dtype)
+
+  def embed(self, obs, action, state=None):
+    swap = lambda x: tf.transpose(x, [1, 0] + list(range(2, len(x.shape))))
+    if state is None:
+      state = self.initial(tf.shape(action)[0])
+    obs = self.prepare_obs(obs)
+    action = self.prepare_action(action)
+    obs = swap(obs)
+    action = swap(action)
+    states = common.static_scan(
+        lambda prev, inputs: self.step(prev, *inputs),
+        (action, obs), state)
+    return states
+
+  @tf.function
+  def step(self, prev_state, prev_action, state):
+    prev_action = self.dyne.embed_action(prev_action)
+    prev_action = tf.repeat(prev_action, self.dyne.action_repeat, 1)
+    state = self.dyne.embed_obs(state)
+    prev_action = tf.stop_gradient(prev_action)
+    state = tf.stop_gradient(state)
+    x = tf.concat([prev_state, prev_action, state], -1)
+    x = self.get('l1', tfkl.Dense, self.hidden, self.act)(x)
+    x, new_state = self._cell(x, [prev_state])
+    return new_state[0]
+
+  def prepare_obs(self, obs):
+    if self.obs_strategy == 'skip':
+      obs = obs[:, ::self.traj_len]
+    return obs
+
+  def prepare_action(self, action):
+    action = tf.reshape(action, [action.shape[0], -1, self.traj_len, self.action_size])
+    return action
+
 class DistLayer(common.Module):
 
   def __init__(self, shape, dist='mse', min_std=0.1, init_std=0.0):
@@ -313,7 +362,7 @@ class DistLayer(common.Module):
     out = self.get('out', tfkl.Dense, np.prod(self._shape))(inputs)
     out = tf.reshape(out, tf.concat([tf.shape(inputs)[:-1], self._shape], 0))
     out = tf.cast(out, tf.float32)
-    if self._dist in ('normal', 'tanh_normal', 'trunc_normal'):
+    if self._dist in ('normal', 'tanh_normal', 'trunc_normal', 'logvar_normal'):
       std = self.get('std', tfkl.Dense, np.prod(self._shape))(inputs)
       std = tf.reshape(std, tf.concat([tf.shape(inputs)[:-1], self._shape], 0))
       std = tf.cast(std, tf.float32)
@@ -321,6 +370,10 @@ class DistLayer(common.Module):
       dist = tfd.Normal(out, 1.0)
       return tfd.Independent(dist, len(self._shape))
     if self._dist == 'normal':
+      dist = tfd.Normal(out, std)
+      return tfd.Independent(dist, len(self._shape))
+    if self._dist == 'logvar_normal':
+      std = tf.math.exp(0.5 * std)
       dist = tfd.Normal(out, std)
       return tfd.Independent(dist, len(self._shape))
     if self._dist == 'binary':

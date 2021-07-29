@@ -17,6 +17,18 @@
             "console": "integratedTerminal"
         },
         {
+            "name": "addressing_dyne",
+            "env": {"CUDA_VISIBLE_DEVICES": "0"},
+            "type": "python",
+            "request": "launch",
+            "program": "dreamerv2/train.py",
+            "args": ["--configs", "defaults", "dmc", "addressing", "addressing_dyne", "--task", "dmc_walker_walk", 
+                "--logdir", "/data/tmp/debug/walker_v2_{run_id}", "--logging.wdb", "False"],
+            "cwd": "/dreamerv2",
+            "justMyCode": false,
+            "console": "integratedTerminal"
+        },
+        {
             "name": "no address",
             "type": "python",
             "request": "launch",

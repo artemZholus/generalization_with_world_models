@@ -27,6 +27,7 @@ from tqdm import tqdm
 
 import agent
 import proposal
+import embeddings
 import elements
 import common
 
@@ -112,7 +113,8 @@ def per_episode(ep, mode):
       'env_step': replay_.num_transitions,
       f'{config.logging.env_name}/length': length
     }
-    wandb.log(summ)
+    if config.logging.wdb:
+      wandb.log(summ)
   should = {'train': should_video_train, 'eval': should_video_eval}[mode]
   if should(step):
     logger.video(f'{mode}_policy', ep['image'])
@@ -140,6 +142,22 @@ if prefill:
 print('Create agent.')
 train_dataset = iter(train_replay.dataset(**config.dataset))
 eval_dataset = iter(eval_replay.dataset(**config.dataset))
+if config.embeddings.trainer.mode == 'sa_dyne':
+  path = pathlib.Path(config.embeddings.data_path).expanduser()
+  dyne_dataset = iter(common.Replay(path).dataset(length=config.embeddings.traj_len, 
+                                                  **config.embeddings.dataset))
+  dyne_encoder = embeddings.SADyneEncoder(config.embeddings.dyne, 
+                                          config.embeddings.traj_len, 
+                                          action_space)
+  trainer = embeddings.DyneTrainer(config.embeddings.trainer, dyne_encoder)
+  for i in range(config.embeddings.trainer.training_steps):
+    mets = trainer.train(next(dyne_dataset))
+    if i % config.embeddings.trainer.log_every == 0:
+      mets['dyne_step'] = i
+      if config.logging.wdb:
+        wandb.log(mets)
+  del dyne_dataset
+
 agnt = agent.Agent(config, logger, action_space, step, train_dataset)
 if 'multitask' not in config or config.multitask.mode == 'none':
   batch_proposal = proposal.TrainProposal(config, agnt, step, train_dataset)
@@ -147,6 +165,9 @@ elif config.multitask.mode == 'raw':
   batch_proposal = proposal.RawMultitask(config, agnt, step, train_dataset)
 elif config.multitask.mode == 'addressing':
   batch_proposal = proposal.RetrospectiveAddressing(config, agnt, step, train_dataset)
+elif config.multitask.mode == 'addressing_dyne':
+  batch_proposal = proposal.DyneRetrospectiveAddressing(config, agnt, step, train_dataset, trainer.dyne_encoder)
+
 if (logdir / 'variables.pkl').exists():
   agnt.load(logdir / 'variables.pkl')
 else:
