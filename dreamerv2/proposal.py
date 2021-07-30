@@ -287,3 +287,4 @@ class DyneRetrospectiveAddressing(RetrospectiveAddressing):
     super().__init__(config, agent, step, dataset)
     self.encoder = dyne.obs_net_encoder
     self.addressing = common.DyneAddressNet(dyne)
+    self.modules = [self.addressing]
