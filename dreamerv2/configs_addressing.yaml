@@ -181,7 +181,7 @@ raw_multitask:
     multitask_probability: 0.5 # expert_batch_prop
     multitask_batch_fraction: 0.5
 
-addressing_dyne:
+addressing_dyne_v1:
   dataset: {batch: 50, length: 52, oversample_ends: True}
   embeddings:
     data_path: '/data/expert_buff/w_walk_1000e/episodes'
@@ -191,10 +191,10 @@ addressing_dyne:
       act_embed_size: 6
       obs_embed_size: 100
       action_net: {layers: 2, units: 400, act: selu, dist: logvar_normal}  
-      obs_net_encoder: {depth: 48, act: elu, kernels: [4, 4, 4, 4], keys: [image], rect: False}
+      obs_net_encoder: {depth: 32, act: relu, kernels: [4, 4, 4, 4], keys: [image], rect: False}
       obs_net_dist: {layers: 0, units: 400, act: relu, dist: logvar_normal}
       recon_net: {layers: 2, units: 400, act: relu, dist: normal}
-      image_net: {shape: [64, 64, 3], depth: 48, act: elu, kernels: [5, 5, 6, 6]}
+      image_net: {shape: [64, 64, 3], depth: 32, act: relu, kernels: [5, 5, 6, 6]}
     trainer:
       mode: sa_dyne
       training_steps: 10000
