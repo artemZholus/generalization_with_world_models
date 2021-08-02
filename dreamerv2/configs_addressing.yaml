@@ -100,7 +100,7 @@ v1:
   train_every: 1000
   train_steps: 100
   time_limit: 1000
-  action_repeat: 1
+  action_repeat: 2
   log_every: 1e3
   pred_discount: False
   grad_heads: [image, reward]
@@ -109,7 +109,7 @@ v1:
   decoder: {depth: 32, act: relu, kernels: [5, 5, 6, 6]}
   reward_head: {layers: 2, units: 400, act: elu, dist: mse}
   discount_head: {layers: 3, units: 400, act: elu, dist: binary}
-  loss_scales.kl: 0.1
+  loss_scales.kl: 1.0
 
   kl: {free: 3.0, forward: False, balance: 0.5, free_avg: True}
   model_opt: {opt: adam, lr: 6e-4, eps: 1e-5, clip: 100, wd: 0.0}
