@@ -38,6 +38,7 @@ class Agent(common.Module):
 
   @tf.function
   def policy(self, obs, state=None, mode='train'):
+    print('calling policy')
     tf.py_function(lambda: self.step.assign(
         int(self._counter), read_value=False), [], [])
     if state is None:
@@ -69,6 +70,7 @@ class Agent(common.Module):
 
   @tf.function
   def train(self, data, state=None):
+    print('calling train agent')
     metrics = {}
     state, outputs, mets = self.wm.train(data, state)
     metrics.update(mets)
@@ -108,6 +110,7 @@ class WorldModel(common.Module):
     self.model_opt = common.Optimizer('model', **config.model_opt)
 
   def train(self, data, state=None):
+    print('calling train wm')
     with tf.GradientTape() as model_tape:
       model_loss, state, outputs, metrics = self.loss(data, state)
     modules = [self.encoder, self.rssm, *self.heads.values()]
@@ -115,6 +118,7 @@ class WorldModel(common.Module):
     return state, outputs, metrics
 
   def loss(self, data, state=None):
+    print('calling wm loss')
     data = self.preprocess(data)
     embed = self.encoder(data)
     post, prior = self.rssm.observe(embed, data['action'], state)
@@ -143,6 +147,7 @@ class WorldModel(common.Module):
     return model_loss, post, outs, metrics
 
   def imagine(self, policy, start, horizon):
+    print('calling wm imagine')
     flatten = lambda x: x.reshape([-1] + list(x.shape[2:]))
     start = {k: flatten(v) for k, v in start.items()}
     def step(prev, _):
@@ -222,6 +227,7 @@ class ActorCritic(common.Module):
     self.critic_opt = common.Optimizer('critic', **config.critic_opt)
 
   def train(self, world_model, start, reward_fn):
+    print('calling ac train')
     metrics = {}
     hor = self.config.imag_horizon
     with tf.GradientTape() as actor_tape:
@@ -238,6 +244,7 @@ class ActorCritic(common.Module):
     return metrics
 
   def actor_loss(self, feat, action, target, weight):
+    print('calling a loss')
     metrics = {}
     policy = self.actor(tf.stop_gradient(feat))
     if self.config.actor_grad == 'dynamics':
@@ -264,6 +271,7 @@ class ActorCritic(common.Module):
     return actor_loss, metrics
 
   def critic_loss(self, feat, action, target, weight):
+    print('calling c loss')
     dist = self.critic(feat)[:-1]
     target = tf.stop_gradient(target)
     critic_loss = -(dist.log_prob(target) * weight[:-1]).mean()

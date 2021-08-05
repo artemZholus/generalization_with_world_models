@@ -148,6 +148,7 @@ elif config.multitask.mode == 'raw':
   batch_proposal = proposal.RawMultitask(config, agnt, step, train_dataset)
 elif config.multitask.mode == 'addressing':
   batch_proposal = proposal.RetrospectiveAddressing(config, agnt, step, train_dataset)
+print('Agent created')
 if (logdir / 'variables.pkl').exists():
   agnt.load(logdir / 'variables.pkl')
 else:

@@ -40,7 +40,7 @@ class RawMultitask(TrainProposal):
   def __init__(self, config, agent, step, dataset):
     super().__init__(config, agent, step, dataset)
     path = pathlib.Path(config.multitask.data_path).expanduser()
-    self.multitask_dataset = iter(common.Replay(path).dataset(**config.multitask.dataset))
+    self.multitask_dataset = iter(common.Replay(path, rescan=400, cache=200).dataset(**config.multitask.dataset))
   
   @tf.function
   def merge_batches(self, multitask_batch, task_batch, pct):
@@ -183,6 +183,7 @@ class RetrospectiveAddressing(RawMultitask):
     if soft:
       dist = common.OneHotDist(logits=logits)
       selection = dist.sample()
+      selection = self._cast(selection)
       embedding = tf.einsum('ij,jab->iab', selection, multitask_embedding)
       actions = tf.einsum('ij,jab->iab', selection, multitask_batch['action'])
       rewards = tf.einsum('ij,ja->ia', selection, multitask_batch['reward'])
@@ -249,16 +250,17 @@ class RetrospectiveAddressing(RawMultitask):
         advantage = tf.stop_gradient(advantage)
         loss = tf.cast(tf.reduce_mean(-log_policy * advantage), tf.float32)
       elif kind == 'value':
-        dist, selection, selected_obs, selected_actions, selected_rewards = self.select_expert(
+        dist, selection, selected_obs, selected_actions, selected_rewards = self.select(
           logits, multitask_obs, multitask_batch, soft=True
         )
         #new_emb = tf.tile(tf.expand_dims(exp_emb, 1), [1, selection.shape[1], 1, 1])
         rewards, feat = self.task_reward(selected_obs, selected_actions, reduce=False)
         rewards = tf.stop_gradient(rewards)
+        rewards = tf.cast(rewards, tf.float32)
         pcont = self.config.discount * tf.ones_like(rewards)
         discount = tf.stop_gradient(tf.math.cumprod(tf.concat(
             [tf.ones_like(pcont[:, :1]), pcont[:, :-2]], 1), 1))
-        values = self._value(feat).mode()
+        values = self.ac._target_critic(feat).mode()
         returns = common.lambda_return(
             rewards[:, :-1], values[:, :-1], pcont[:, :-1],
             bootstrap=values[:, -1], lambda_=self.config.discount_lambda, axis=1)

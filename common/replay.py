@@ -10,10 +10,12 @@ import tensorflow as tf
 
 class Replay:
 
-  def __init__(self, directory, limit=None):
+  def __init__(self, directory, limit=None, rescan=1, cache=None):
     directory.mkdir(parents=True, exist_ok=True)
     self._directory = directory
     self._limit = limit
+    self._rescan = rescan
+    self._cache = cache
     self._step = sum(int(
         str(n).split('-')[-1][:-4]) - 1 for n in directory.glob('*.npz'))
     self._episodes = load_episodes(directory, limit)
@@ -49,7 +51,9 @@ class Replay:
     types = {k: v.dtype for k, v in example.items()}
     shapes = {k: (None,) + v.shape[1:] for k, v in example.items()}
     generator = lambda: sample_episodes(
-        self._episodes, length, oversample_ends)
+        self._episodes, self._directory, length, 
+        oversample_ends, rescan=self._rescan, cache=self._cache
+    )
     dataset = tf.data.Dataset.from_generator(generator, types, shapes)
     dataset = dataset.batch(batch, drop_remainder=True)
     dataset = dataset.prefetch(10)
@@ -77,29 +81,41 @@ def save_episodes(directory, episodes):
   return filenames
 
 
-def sample_episodes(episodes, length=None, balance=False, seed=0):
+def sample_episodes(episodes, directory=None, length=None, balance=False, rescan=100, cache=None, seed=0):
   random = np.random.RandomState(seed)
   while True:
-    episode = random.choice(list(episodes.values()))
-    if length:
-      total = len(next(iter(episode.values())))
-      available = total - length
-      if available < 1:
-        print(f'Skipped short episode of length {total}.')
-        continue
-      if balance:
-        index = min(random.randint(0, total), available)
-      else:
-        index = int(random.randint(0, available + 1))
-      episode = {k: v[index: index + length] for k, v in episode.items()}
-    yield episode
+    if cache:
+      k = next(episodes.keys())
+      ep_len = len(episodes[k]['reward']) - 1
+      for key in list(episodes.keys()):
+        del episodes[key]
+      for key, val in load_episodes(directory, limit=int(cache or 0) * ep_len, random=True).items():
+        episodes[key] = val
+    for _ in range(rescan):
+      episode = random.choice(list(episodes.values()))
+      if length:
+        total = len(next(iter(episode.values())))
+        available = total - length
+        if available < 1:
+          print(f'Skipped short episode of length {total}.')
+          continue
+        if balance:
+          index = min(random.randint(0, total), available)
+        else:
+          index = int(random.randint(0, available + 1))
+        episode = {k: v[index: index + length] for k, v in episode.items()}
+      yield episode
 
 
-def load_episodes(directory, limit=None):
+def load_episodes(directory, limit=None, random=False):
   directory = pathlib.Path(directory).expanduser()
   episodes = {}
   total = 0
-  for filename in reversed(sorted(directory.glob('*.npz'))):
+  if random:
+    paths = np.random.permutation(directory.glob('*.npz'))
+  else:
+    paths = reversed(sorted(directory.glob('*.npz')))
+  for filename in paths:
     try:
       with filename.open('rb') as f:
         episode = np.load(f)

@@ -18,13 +18,16 @@
         },
         {
             "name": "addressing",
-            "env": {"CUDA_VISIBLE_DEVICES": "0"},
+            // "env": {"CUDA_VISIBLE_DEVICES": "1"},
             "type": "python",
             "request": "launch",
             "program": "dreamerv2/train.py",
             "args": ["--configs", "defaults", "dmc", "v1", "addressing", "debug", "--task", "dmc_walker_run", 
-                "--logdir", "/data/tmp/walker_v2_{run_id}", "--precision", "32"],
-            "cwd": "/dreamerv2",
+                "--logdir", "/home/azholus/data/tmp_noroot/walker_v2_{run_id}", "--addressing.kind", "value",
+                "--multitask.data_path", "/home/azholus/data/multitask_buffers/w_walk_600r_1000e/episodes", 
+                "--gpu", "1"
+            ],
+            // "cwd": "/dreamerv2",
             "justMyCode": false,
             "console": "integratedTerminal"
         },
