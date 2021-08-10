@@ -66,6 +66,8 @@ if config.precision == 16:
 print('Logdir', logdir)
 train_replay = common.Replay(logdir / 'train_replay', config.replay_size)
 eval_replay = common.Replay(logdir / 'eval_replay', config.time_limit or 1)
+mt_path = pathlib.Path(config.multitask.data_path).expanduser()
+mt_replay = common.Replay(mt_path)
 step = elements.Counter(train_replay.total_steps)
 outputs = [
     elements.TerminalOutput(),
@@ -102,6 +104,8 @@ def per_episode(ep, mode):
   print(f'{mode.title()} episode has {length} steps and return {score:.1f}.')
   replay_ = dict(train=train_replay, eval=eval_replay)[mode]
   replay_.add(ep)
+  if mode == 'train':
+    mt_replay.add(ep)
   logger.scalar(f'{mode}_transitions', replay_.num_transitions)
   logger.scalar(f'{mode}_return', score)
   logger.scalar(f'{mode}_length', length)
@@ -145,9 +149,9 @@ agnt = agent.Agent(config, logger, action_space, step, train_dataset)
 if 'multitask' not in config or config.multitask.mode == 'none':
   batch_proposal = proposal.TrainProposal(config, agnt, step, train_dataset)
 elif config.multitask.mode == 'raw':
-  batch_proposal = proposal.RawMultitask(config, agnt, step, train_dataset)
+  batch_proposal = proposal.RawMultitask(config, agnt, step, train_dataset, mt_replay)
 elif config.multitask.mode == 'addressing':
-  batch_proposal = proposal.RetrospectiveAddressing(config, agnt, step, train_dataset)
+  batch_proposal = proposal.RetrospectiveAddressing(config, agnt, step, train_dataset, mt_replay)
 print('Agent created')
 if (logdir / 'variables.pkl').exists():
   agnt.load(logdir / 'variables.pkl')

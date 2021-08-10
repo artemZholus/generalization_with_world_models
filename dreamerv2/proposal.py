@@ -37,10 +37,10 @@ class TrainProposal:
 
 
 class RawMultitask(TrainProposal):
-  def __init__(self, config, agent, step, dataset):
+  def __init__(self, config, agent, step, dataset, replay):
     super().__init__(config, agent, step, dataset)
-    path = pathlib.Path(config.multitask.data_path).expanduser()
-    self.multitask_dataset = iter(common.Replay(path).dataset(**config.multitask.dataset))
+    # path = pathlib.Path(config.multitask.data_path).expanduser()
+    self.multitask_dataset = iter(replay.dataset(**config.multitask.dataset))
   
   @tf.function
   def merge_batches(self, multitask_batch, task_batch, pct):
@@ -88,8 +88,8 @@ class RawMultitask(TrainProposal):
   
 
 class RetrospectiveAddressing(RawMultitask):
-  def __init__(self, config, agent, step, dataset):
-    super().__init__(config, agent, step, dataset)
+  def __init__(self, config, agent, step, dataset, replay):
+    super().__init__(config, agent, step, dataset, replay)
     self.addressing = common.AddressNet()
     self.encoder = self.wm.encoder
     
