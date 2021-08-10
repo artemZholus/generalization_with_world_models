@@ -40,7 +40,7 @@ class RawMultitask(TrainProposal):
   def __init__(self, config, agent, step, dataset):
     super().__init__(config, agent, step, dataset)
     path = pathlib.Path(config.multitask.data_path).expanduser()
-    self.multitask_dataset = iter(common.Replay(path, rescan=400, cache=200).dataset(**config.multitask.dataset))
+    self.multitask_dataset = iter(common.Replay(path).dataset(**config.multitask.dataset))
   
   @tf.function
   def merge_batches(self, multitask_batch, task_batch, pct):
