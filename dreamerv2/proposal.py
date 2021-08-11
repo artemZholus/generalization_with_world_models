@@ -42,6 +42,25 @@ class RawMultitask(TrainProposal):
     # path = pathlib.Path(config.multitask.data_path).expanduser()
     self.multitask_dataset = iter(replay.dataset(**config.multitask.dataset))
   
+  def select(self, logits, multitask_embedding, multitask_batch, soft, n=1):
+    if soft:
+      dist = common.OneHotDist(logits=logits)
+      selection32 = dist.sample()
+      selection = self._cast(selection32)
+      embedding = tf.einsum('ij,jab->iab', selection, multitask_embedding)
+      actions = tf.einsum('ij,jab->iab', selection, multitask_batch['action'])
+      rewards = tf.einsum('ij,ja->ia', selection32, multitask_batch['reward'])
+    else:
+      dist = tfd.Categorical(logits=logits)
+      if n == 1:
+        selection = dist.sample() # todo: consider multi-sample objectives
+      else:
+        selection = dist.sample(n)
+      embedding = tf.gather(multitask_embedding, selection)
+      rewards = tf.gather(multitask_batch['reward'], selection)
+      actions = tf.gather(multitask_batch['action'], selection)
+    return dist, selection, embedding, actions, rewards
+
   @tf.function
   def merge_batches(self, multitask_batch, task_batch, pct):
     # copy batches
@@ -86,6 +105,143 @@ class RawMultitask(TrainProposal):
     else:
       return task_batch
   
+class ReturnBasedProposal(RawMultitask):
+  class Temp(common.Module):
+    def __init__(self):
+      self.val = tf.Variable(1., dtype=tf.float32, trainable=True)
+    def __call__(self, logits):
+      return logits / tf.math.softplus(self.val)
+
+  def __init__(self, config, agent, step, dataset, replay):
+      super().__init__(config, agent, step, dataset, replay)
+      self.temp = ReturnBasedProposal.Temp()
+      self.opt = common.Optimizer('addr', **config.addressing.optimizer)
+      self.modules = [self.temp]
+
+  def propose_batch(self, agnt, metrics=None):
+    with self.timed.action('batch'):
+      # batch = next(self.dataset)
+      # batch = self.wm.preprocess(batch)
+      multitask_batches = []
+      for _ in range(self.config.addressing.num_train_multitask_batches):
+        multitask_batches.append(self.wm.preprocess(next(self.multitask_dataset)))
+    with self.timed.action('train_addressing'):
+      mets = self.train_proposal(multitask_batches)
+    agent_only = False #tf.constant(False)
+    # addressing_probability == expert_batch_prop
+    with self.timed.action('batch'):
+      batch = next(self.dataset)
+    randn = np.random.rand()
+    if randn < self.config.multitask.multitask_probability:
+      with self.timed.action('query'):
+        batch = self.query_memory(batch)
+      # agent_only = self.addr_agent_only #tf.constant(self.addr_agent_only)
+    if metrics is not None:
+      metrics.update(mets)
+    return batch
+
+  def query_memory(self, data):
+    cache = []
+    logits_all = []
+    pct = self.config.multitask.multitask_batch_fraction
+    for i in range(self.config.addressing.num_query_multitask_batches):
+      multitask_batch = next(self.multitask_dataset)
+      addr_mt_batch = tf.nest.map_structure(tf.identity, multitask_batch)
+      addr_mt_batch = self.wm.preprocess(addr_mt_batch)
+      addr_mt_batch['action'] = self._cast(addr_mt_batch['action'])
+      cache.append(multitask_batch)
+      logits = self.infer_address(addr_mt_batch)
+      logits_all.append(tf.stop_gradient(logits))
+    multitask_batch = self.calc_query(cache, logits_all, n=len(data['reward']))
+    return self.merge_batches(multitask_batch, data, pct)
+  
+  @tf.function
+  def infer_address(self, multitask_batch):
+    multitask_embed = self.wm.encoder(multitask_batch)
+    post, _ = self.wm.rssm.observe(multitask_embed, multitask_batch['action'])
+    feat = self.wm.rssm.get_feat(post)
+    rewards = self.reward(feat, post, multitask_batch['action'])
+    # mean for stability
+    rewards = tf.stop_gradient(tf.reduce_mean(rewards, 1))
+    logits = self.temp(rewards)
+    return logits
+
+  @tf.function
+  def calc_query(self, expert, logits, replacement=True, n=1):
+    keys = ['image', 'action', 'reward', 'discount']
+    logits = tf.concat(logits, -1)
+    log_probs = tf.nn.log_softmax(logits, axis=-1)
+    if replacement:
+      # log_probs should be 2d
+      dist = common.OneHotDist(logits=log_probs)
+      if n == 1:
+        selection = tf.math.argmax(dist.sample(), -1)
+      else:
+        selection = tf.math.argmax(dist.sample(n), -1)
+    else:
+      # TODO: select per-row argmax in 2d tensor without replacement
+      gumbel = tfd.Gumbel(loc=tf.zeros_like(log_probs[0]), scale=1.)
+      selection = tf.argsort(-log_probs[0] - gumbel.sample(), -1)
+      selection = selection[:log_probs.shape[0]]
+    multitask_batch = {
+      k: tf.concat([c[k] for c in expert], 0)
+      for k in keys
+    }
+    multitask_batch = {k: tf.gather(multitask_batch[k], selection)
+                       for k in keys}
+    return multitask_batch
+
+  @tf.function
+  def task_reward(self, observations, actions, reduce=True):
+    post, _ = self.wm.rssm.observe(observations, actions)
+    feat = self.wm.rssm.get_feat(post)
+    rewards = self._cast(self.reward(feat, post, actions))
+    #transpose?
+    return tf.reduce_sum(rewards, 1) if reduce else (rewards, feat)
+  
+  @tf.function
+  def train_proposal(self, multitask_batches):
+    multitask_batches = tf.nest.map_structure(tf.identity, multitask_batches)
+    metrics = {}
+    with tf.GradientTape() as address_tape:
+      multitask_batch = {
+          k: tf.concat(
+          [multitask_batches[i][k] for i in range(len(multitask_batches))]
+          , 0) for k in multitask_batches[0].keys()
+      }
+      multitask_batch['action'] = self._cast(multitask_batch['action'])
+      multitask_actions = multitask_batch['action']
+      multitask_rewards = multitask_batch['reward']
+      multitask_wm_obs = self.wm.encoder(multitask_batch)
+      logits = self.infer_address(multitask_batch)
+      log_probs = tf.nn.log_softmax(logits, axis=-1)
+      kind = self.config.addressing.kind
+      bs = self.config.dataset.batch
+      dist, selection, selected_wm_obs, selected_actions, selected_rewards = self.select(
+        logits, multitask_wm_obs, multitask_batch, soft=False, n=bs
+      )
+      target = self.task_reward(selected_wm_obs, selected_actions)
+      log_policy = tf.gather(log_probs, selection)
+      advantage = target
+      advantage = (advantage - tf.reduce_mean(advantage)) / (tf.math.reduce_std(advantage) + 1e-6)
+      advantage = tf.stop_gradient(advantage)
+      advantage = tf.cast(advantage, tf.float32)
+      loss = tf.cast(tf.reduce_mean(-log_policy * advantage), tf.float32)
+    addr_norm = self.opt(address_tape, loss, self.modules)
+    diff = tf.expand_dims(log_probs, 0) - tf.expand_dims(log_probs, 1)
+    
+    pair_jsd = tf.reduce_sum(diff * tf.exp(tf.expand_dims(log_probs, 0))) / (bs * (bs - 1))
+    metrics['pairwise_jsd'] = pair_jsd
+    metrics['address_entropy'] = dist.entropy().mean()
+    metrics['address_loss'] = loss
+    if kind == 'value' or 'pred' in kind:
+      metrics['expert_batch_pred_reward'] = tf.reduce_mean(target)
+    metrics['expert_batch_true_reward'] = tf.reduce_mean(tf.reduce_sum(selected_rewards, 1))
+    # metrics['expert_batch_expected_reward'] = \
+    #   (tf.exp(log_probs) * multitask_rewards.sum(1)).sum()
+    metrics['address_net_norm'] = addr_norm['addr_grad_norm']
+    metrics['temperature'] = self.temp.val
+    return metrics
 
 class RetrospectiveAddressing(RawMultitask):
   def __init__(self, config, agent, step, dataset, replay):
@@ -94,7 +250,7 @@ class RetrospectiveAddressing(RawMultitask):
     self.encoder = self.wm.encoder
     
     if config.addressing.separate_enc_for_addr:
-        self._encoder = common.ConvEncoder(config.encoder.depth, config.encoder.act, rect=config.encoder.rect)
+        self.encoder = common.ConvEncoder(config.encoder.depth, config.encoder.act, rect=config.encoder.rect)
     self.opt = common.Optimizer('addr', **config.addressing.optimizer)
     self.modules = [self.addressing]
     if not self.config.addressing.detach_cnn:
@@ -179,22 +335,6 @@ class RetrospectiveAddressing(RawMultitask):
                        for k in keys}
     return multitask_batch
 
-  def select(self, logits, multitask_embedding, multitask_batch, soft):
-    if soft:
-      dist = common.OneHotDist(logits=logits)
-      selection = dist.sample()
-      selection = self._cast(selection)
-      embedding = tf.einsum('ij,jab->iab', selection, multitask_embedding)
-      actions = tf.einsum('ij,jab->iab', selection, multitask_batch['action'])
-      rewards = tf.einsum('ij,ja->ia', selection, multitask_batch['reward'])
-    else:
-      dist = tfd.Categorical(logits=logits)
-      selection = dist.sample() # todo: consider multi-sample objectives
-      embedding = tf.gather(multitask_embedding, selection)
-      rewards = tf.gather(multitask_batch['reward'], selection)
-      actions = tf.gather(multitask_batch['action'], selection)
-    return dist, selection, embedding, actions, rewards
-
   @tf.function
   def train_addressing(self, task_batch, multitask_batches):
     task_batch = tf.nest.map_structure(tf.identity, task_batch)
@@ -202,6 +342,10 @@ class RetrospectiveAddressing(RawMultitask):
     metrics = {}
     with tf.GradientTape() as address_tape:
       task_obs = self.encoder(task_batch)
+      if self.config.addressing.separate_enc_for_addr:
+        task_wm_obs = self.wm.encoder(task_batch)
+      else:
+        task_wm_obs = task_obs
       task_batch['action'] = self._cast(task_batch['action'])
       task_actions = task_batch['action']
       if self.config.addressing.detach_cnn:
@@ -215,6 +359,10 @@ class RetrospectiveAddressing(RawMultitask):
       multitask_actions = multitask_batch['action']
       multitask_rewards = multitask_batch['reward']
       multitask_obs = self.encoder(multitask_batch)
+      if self.config.addressing.separate_enc_for_addr:
+        multitask_wm_obs = self.wm.encoder(multitask_batch)
+      else:
+        multitask_wm_obs = multitask_obs
       if self.config.addressing.detach_cnn:
           multitask_obs = tf.stop_gradient(multitask_obs)
       state = self.addressing.embed(task_obs, task_actions)[-1]
@@ -227,12 +375,12 @@ class RetrospectiveAddressing(RawMultitask):
       log_probs = tf.nn.log_softmax(logits, axis=-1)
       kind = self.config.addressing.kind
       if 'reinforce' in kind:
-        dist, selection, selected_obs, selected_actions, selected_rewards = self.select(
-          logits, multitask_obs, multitask_batch, soft=False
+        dist, selection, selected_wm_obs, selected_actions, selected_rewards = self.select(
+          logits, multitask_wm_obs, multitask_batch, soft=False
         )
         if 'baseline' in kind:
           if kind == 'reinforce_baseline_pred':
-            baseline = self.task_reward(task_obs, task_actions)
+            baseline = self.task_reward(task_wm_obs, task_actions)
           elif kind == 'reinforce_baseline_true':
             baseline = tf.reduce_sum(task_batch['reward'], 1)
         else:
@@ -240,7 +388,7 @@ class RetrospectiveAddressing(RawMultitask):
         # this line fails with a very strange error :(
         # lp = dist.log_prob(selection)
         if 'pred' in kind:
-          target = self.task_reward(selected_obs, selected_actions)
+          target = self.task_reward(selected_wm_obs, selected_actions)
         else:
           target = tf.reduce_sum(selected_rewards, 1)
         rewards = target
@@ -250,11 +398,11 @@ class RetrospectiveAddressing(RawMultitask):
         advantage = tf.stop_gradient(advantage)
         loss = tf.cast(tf.reduce_mean(-log_policy * advantage), tf.float32)
       elif kind == 'value':
-        dist, selection, selected_obs, selected_actions, selected_rewards = self.select(
-          logits, multitask_obs, multitask_batch, soft=True
+        dist, selection, selected_wm_obs, selected_actions, selected_rewards = self.select(
+          logits, multitask_wm_obs, multitask_batch, soft=True
         )
         #new_emb = tf.tile(tf.expand_dims(exp_emb, 1), [1, selection.shape[1], 1, 1])
-        rewards, feat = self.task_reward(selected_obs, selected_actions, reduce=False)
+        rewards, feat = self.task_reward(selected_wm_obs, selected_actions, reduce=False)
         rewards = tf.stop_gradient(rewards)
         rewards = tf.cast(rewards, tf.float32)
         pcont = self.config.discount * tf.ones_like(rewards)

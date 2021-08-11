@@ -104,8 +104,8 @@ def per_episode(ep, mode):
   print(f'{mode.title()} episode has {length} steps and return {score:.1f}.')
   replay_ = dict(train=train_replay, eval=eval_replay)[mode]
   replay_.add(ep)
-  if mode == 'train':
-    mt_replay.add(ep)
+  # if mode == 'train':
+  #   mt_replay.add(ep)
   logger.scalar(f'{mode}_transitions', replay_.num_transitions)
   logger.scalar(f'{mode}_return', score)
   logger.scalar(f'{mode}_length', length)
@@ -150,6 +150,8 @@ if 'multitask' not in config or config.multitask.mode == 'none':
   batch_proposal = proposal.TrainProposal(config, agnt, step, train_dataset)
 elif config.multitask.mode == 'raw':
   batch_proposal = proposal.RawMultitask(config, agnt, step, train_dataset, mt_replay)
+elif config.multitask.mode == 'return':
+  batch_proposal = proposal.ReturnBasedProposal(config, agnt, step, train_dataset, mt_replay)
 elif config.multitask.mode == 'addressing':
   batch_proposal = proposal.RetrospectiveAddressing(config, agnt, step, train_dataset, mt_replay)
 print('Agent created')
