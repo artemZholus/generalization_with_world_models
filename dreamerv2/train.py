@@ -66,8 +66,11 @@ if config.precision == 16:
 print('Logdir', logdir)
 train_replay = common.Replay(logdir / 'train_replay', config.replay_size)
 eval_replay = common.Replay(logdir / 'eval_replay', config.time_limit or 1)
-mt_path = pathlib.Path(config.multitask.data_path).expanduser()
-mt_replay = common.Replay(mt_path)
+if config.multitask.mode != 'none':
+  mt_path = pathlib.Path(config.multitask.data_path).expanduser()
+  mt_replay = common.Replay(mt_path)
+else:
+  mt_replay = None
 step = elements.Counter(train_replay.total_steps)
 outputs = [
     elements.TerminalOutput(),
@@ -91,6 +94,10 @@ def make_env(mode):
         task, config.action_repeat, config.image_size, config.grayscale,
         life_done=False, sticky_actions=True, all_actions=True)
     env = common.OneHotAction(env)
+  elif suite == 'metaworld':
+    env = common.MetaWorld(task, config.action_repeat, config.image_size)
+    env.dump_tasks(str(logdir / 'tasks.pkl'))
+    env = common.NormalizeAction(env)
   else:
     raise NotImplementedError(suite)
   env = common.TimeLimit(env, config.time_limit)
@@ -121,6 +128,8 @@ def per_episode(ep, mode):
   should = {'train': should_video_train, 'eval': should_video_eval}[mode]
   if should(step):
     logger.video(f'{mode}_policy', ep['image'])
+    video = np.transpose(ep['image'], (0, 3, 1, 2))
+    wandb.log({f"{mode}_policy": wandb.Video(video, fps=30, format="gif")})
   logger.write()
 
 print('Create envs.')
@@ -184,7 +193,10 @@ train_driver.on_step(train_step)
 while step < config.steps:
   logger.write()
   print('Start evaluation.')
-  logger.add(agnt.report(next(eval_dataset)), prefix='eval')
+  video = agnt.report(next(eval_dataset))
+  logger.add(video, prefix='eval')
+  video = (np.transpose(video['openl'], (0, 3, 1, 2)) * 255).astype(np.uint8)
+  wandb.log({f"eval_openl": wandb.Video(video, fps=30, format="gif")})
   eval_policy = functools.partial(agnt.policy, mode='eval')
   eval_driver(eval_policy, episodes=config.eval_eps)
   print('Start training.')

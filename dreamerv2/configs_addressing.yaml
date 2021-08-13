@@ -58,7 +58,10 @@ defaults:
   slow_target_update: 100
   slow_target_fraction: 1
 
-  
+  tf_debug:
+    enabled: False
+    path: /tmp/tfdbg1/
+    mode: FULL_HEALTH  
 
   # Multitask
   multitask: 
@@ -99,8 +102,6 @@ defaults:
 v1:
   train_every: 1000
   train_steps: 100
-  time_limit: 1000
-  action_repeat: 2
   log_every: 1e3
   pred_discount: False
   grad_heads: [image, reward]
@@ -185,6 +186,28 @@ atari:
   loss_scales.discount: 5.0
   .*\.wd$: 1e-6
 
+mtw:
+
+  task: metaworld_ml1_push
+  time_limit: 500
+  action_repeat: 1
+  eval_every: 1e4
+  log_every: 1e3
+  prefill: 5000
+  train_every: 5
+  pretrain: 100
+  pred_discount: False
+  grad_heads: [image, reward]
+  rssm: {hidden: 200, deter: 200}
+  model_opt.lr: 3e-4
+  actor_opt.lr: 8e-5
+  critic_opt.lr: 8e-5
+  actor_ent: 1e-4
+  discount: 0.99
+  actor_grad: dynamics
+  kl.free: 1.0
+  dataset.oversample_ends: False
+
 dmc:
 
   task: dmc_walker_walk
@@ -218,3 +241,14 @@ debug:
   # train_steps: 1
   dataset.batch: 12
   dataset.length: 50
+debug2:
+
+  jit: False
+  # time_limit: 100
+  # eval_every: 300
+  # log_every: 300
+  # prefill: 100
+  # pretrain: 100
+  # train_steps: 1
+  # dataset.batch: 12
+  # dataset.length: 50
