@@ -83,6 +83,7 @@ should_train = elements.Every(config.train_every)
 should_log = elements.Every(config.log_every)
 should_video_train = elements.Every(config.eval_every)
 should_video_eval = elements.Every(config.eval_every)
+should_wdb_video = elements.Every(config.eval_every * 5)
 
 def make_env(mode):
   suite, task = config.task.split('_', 1)
@@ -128,8 +129,9 @@ def per_episode(ep, mode):
   should = {'train': should_video_train, 'eval': should_video_eval}[mode]
   if should(step):
     logger.video(f'{mode}_policy', ep['image'])
-    video = np.transpose(ep['image'], (0, 3, 1, 2))
-    wandb.log({f"{mode}_policy": wandb.Video(video, fps=30, format="gif")})
+    if should_wdb_video(step):
+      video = np.transpose(ep['image'], (0, 3, 1, 2))
+      wandb.log({f"{mode}_policy": wandb.Video(video, fps=30, format="gif")})
   logger.write()
 
 print('Create envs.')
@@ -195,8 +197,9 @@ while step < config.steps:
   print('Start evaluation.')
   video = agnt.report(next(eval_dataset))
   logger.add(video, prefix='eval')
-  video = (np.transpose(video['openl'], (0, 3, 1, 2)) * 255).astype(np.uint8)
-  wandb.log({f"eval_openl": wandb.Video(video, fps=30, format="gif")})
+  if should_wdb_video(step):
+    video = (np.transpose(video['openl'], (0, 3, 1, 2)) * 255).astype(np.uint8)
+    wandb.log({f"eval_openl": wandb.Video(video, fps=30, format="gif")})
   eval_policy = functools.partial(agnt.policy, mode='eval')
   eval_driver(eval_policy, episodes=config.eval_eps)
   print('Start training.')
