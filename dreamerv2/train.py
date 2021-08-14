@@ -64,8 +64,8 @@ if config.precision == 16:
   prec.set_policy(prec.Policy('mixed_float16'))
 
 print('Logdir', logdir)
-train_replay = common.Replay(logdir / 'train_replay', config.replay_size)
-eval_replay = common.Replay(logdir / 'eval_replay', config.time_limit or 1)
+train_replay = common.Replay(logdir / 'train_replay', config.replay_size, **config.replay)
+eval_replay = common.Replay(logdir / 'eval_replay', config.time_limit or 1, **config.replay)
 if config.multitask.mode != 'none':
   mt_path = pathlib.Path(config.multitask.data_path).expanduser()
   mt_replay = common.Replay(mt_path)
