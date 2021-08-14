@@ -68,8 +68,16 @@ class DMC:
 
 class MetaWorld:
 
-  def __init__(self, name, action_repeat=1, size=(64, 64), camera=None):
-    os.environ['MUJOCO_GL'] = 'egl'
+  def __init__(self, name, action_repeat=1, size=(64, 64), offscreen=True, cameras=None):
+    """
+    Args: 
+      cameras: "corner, corner2, corner3, topview, gripperPOV, behindGripper"
+    """
+    if offscreen:
+      os.environ['MUJOCO_GL'] = 'egl'
+    else:
+      os.environ['MUJOCO_GL'] = 'glfw'
+    self.offscreen = offscreen
     import metaworld
     domain, task = name.split('_', 1)
     if domain == 'ml10':
@@ -87,7 +95,19 @@ class MetaWorld:
 
     self._action_repeat = action_repeat
     self._size = size
-    self._camera = camera if camera is not None else ''
+    if cameras is None:
+      cameras = ['corner']
+    elif isinstance(cameras, (str, int)):
+      cameras = [cameras]
+    self._cameras = []
+    intmap = ['corner', 'corner2', 'corner3']
+    for cam in cameras:
+      if cam is None:
+        cam = 1
+      if isinstance(cam, int):
+        cam = intmap[cam]
+      assert isinstance(cam, str)
+      self._cameras.append(cam)
 
   def load_tasks(self, path):
     import pickle
@@ -161,7 +181,11 @@ class MetaWorld:
   def render(self, *args, **kwargs):
     if kwargs.get('mode', 'rgb_array') != 'rgb_array':
       raise ValueError("Only render mode 'rgb_array' is supported.")
-    return self._env.render(True, f'corner{self._camera}', resolution=self._size)
+    images = []
+    for cam in self._cameras:
+      img = self._env.render(self.offscreen, cam, resolution=self._size)
+      images.append(img)
+    return np.concatenate(images, axis=2)
 
 
 class Atari:
