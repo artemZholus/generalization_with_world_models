@@ -96,7 +96,7 @@ def make_env(mode):
         life_done=False, sticky_actions=True, all_actions=True)
     env = common.OneHotAction(env)
   elif suite == 'metaworld':
-    params = yaml.load(config.env_params)
+    params = yaml.safe_load(config.env_params)
     env = common.MetaWorld(task, config.action_repeat, config.image_size, **params)
     env.dump_tasks(str(logdir / 'tasks.pkl'))
     env = common.NormalizeAction(env)
