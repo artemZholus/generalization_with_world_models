@@ -68,7 +68,9 @@ class DMC:
 
 class MetaWorld:
 
-  def __init__(self, name, action_repeat=1, size=(64, 64), offscreen=True, cameras=None):
+  def __init__(self, name, action_repeat=1, size=(64, 64), 
+      randomize_tasks=False, offscreen=True, cameras=None
+    ):
     """
     Args: 
       cameras: "corner, corner2, corner3, topview, gripperPOV, behindGripper"
@@ -78,6 +80,7 @@ class MetaWorld:
     else:
       os.environ['MUJOCO_GL'] = 'glfw'
     self.offscreen = offscreen
+    self.randomize_tasks = randomize_tasks
     import metaworld
     domain, task = name.split('_', 1)
     if domain == 'ml10':
@@ -88,7 +91,6 @@ class MetaWorld:
     self._env = dom.train_classes[f'{task}-v2']()
     if domain == 'ml1':
       self._tasks = dom.train_tasks
-      # todo: better tasking
       self._env.set_task(self._tasks[0])
     else:
       self._tasks = dom.train_classes
@@ -173,6 +175,9 @@ class MetaWorld:
     return obs, reward, done, info
 
   def reset(self):
+    if self.randomize_tasks:
+      task = self._tasks[np.random.choice(len(self._tasks))]
+      self._env.set_task(task)
     position = self._env.reset()
     obs = self.parse_obs(position)
     obs['image'] = self.render()
