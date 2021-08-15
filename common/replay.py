@@ -30,7 +30,8 @@ class Replay:
 
   @property
   def num_transitions(self):
-    return sum(self._length(ep) for ep in self._episodes.values())
+    return sum(int(
+        str(n).split('-')[-1][:-4]) - 1 for n in self._directory.glob('*.npz'))
 
   def add(self, episode):
     length = self._length(episode)
@@ -89,6 +90,8 @@ def sample_episodes(episodes, directory=None, length=None, balance=False, rescan
       ep_len = len(episodes[k]['reward']) - 1
       for key in list(episodes.keys()):
         del episodes[key]
+      # TODO: refactor this
+      episodes = {}
       for key, val in load_episodes(directory, limit=int(cache or 0) * ep_len, random=True).items():
         episodes[key] = val
     for _ in range(rescan):
