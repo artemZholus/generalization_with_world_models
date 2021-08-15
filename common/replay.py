@@ -85,7 +85,7 @@ def sample_episodes(episodes, directory=None, length=None, balance=False, rescan
   random = np.random.RandomState(seed)
   while True:
     if cache:
-      k = next(episodes.keys())
+      k = next(iter(episodes.keys()))
       ep_len = len(episodes[k]['reward']) - 1
       for key in list(episodes.keys()):
         del episodes[key]
@@ -112,7 +112,8 @@ def load_episodes(directory, limit=None, random=False):
   episodes = {}
   total = 0
   if random:
-    paths = np.random.permutation(directory.glob('*.npz'))
+    paths = list(directory.glob('*.npz'))
+    paths = [paths[i] for i in np.random.permutation(len(paths))]
   else:
     paths = reversed(sorted(directory.glob('*.npz')))
   for filename in paths:
