@@ -1,0 +1,20 @@
+name: dreamerv2
+channels:
+  - default
+dependencies:
+  - python=3.6.9
+  - scipy>=1.5.0
+  - numpy
+  - pip:
+    - gym[atari]
+    - elements
+    - dm_control
+    - ruamel.yaml
+    - wandb
+    - imageio
+    - moviepy
+    - tensorflow==2.4.2
+    - tensorflow_probability==0.12.2
+    - git+https://github.com/artemZholus/metaworld.git@master#egg=metaworld
+
+
