@@ -44,7 +44,10 @@ if config.logging.wdb:
              name=config.logging.run_name)
 if config.logging.wdb and '{run_id}' in config.logdir:
     config = config.update({'logdir': config.logdir.format(run_id=f'{wandb.run.name}_{wandb.run.id}')})
-
+    if '{run_id}' in config.multitask.data_path:
+      config = config.update(
+        {'multitask.data_path': config.multitask.data_path.format(run_id=f'{wandb.run.name}_{wandb.run.id}')}
+      )
 logdir = pathlib.Path(config.logdir).expanduser()
 config = config.update(
     steps=config.steps // config.action_repeat,
@@ -68,7 +71,7 @@ train_replay = common.Replay(logdir / 'train_replay', config.replay_size, **conf
 eval_replay = common.Replay(logdir / 'eval_replay', config.time_limit or 1, **config.replay)
 if config.multitask.mode != 'none':
   mt_path = pathlib.Path(config.multitask.data_path).expanduser()
-  mt_replay = common.Replay(mt_path)
+  mt_replay = common.Replay(mt_path, **config.replay)
 else:
   mt_replay = None
 step = elements.Counter(train_replay.total_steps)
@@ -112,9 +115,10 @@ def per_episode(ep, mode):
   score = float(ep['reward'].astype(np.float64).sum())
   print(f'{mode.title()} episode has {length} steps and return {score:.1f}.')
   replay_ = dict(train=train_replay, eval=eval_replay)[mode]
-  replay_.add(ep)
-  # if mode == 'train':
-  #   mt_replay.add(ep)
+  ep_file = replay_.add(ep)
+  if mode == 'train' and config.multitask.bootstrap:
+    # mt_replay.add(ep)
+    mt_replay._episodes[str(ep_file)] = ep
   logger.scalar(f'{mode}_transitions', replay_.num_transitions)
   logger.scalar(f'{mode}_return', score)
   logger.scalar(f'{mode}_length', length)

@@ -46,6 +46,7 @@ class Replay:
           del self._episodes[key]
     filename = save_episodes(self._directory, [episode])[0]
     self._episodes[str(filename)] = episode
+    return filename
 
   def dataset(self, batch, length, oversample_ends):
     example = self._episodes[next(iter(self._episodes.keys()))]
