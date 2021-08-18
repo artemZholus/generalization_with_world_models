@@ -49,7 +49,10 @@ class RawMultitask(TrainProposal):
       selection = self._cast(selection32)
       embedding = tf.einsum('ij,jab->iab', selection, multitask_embedding)
       actions = tf.einsum('ij,jab->iab', selection, multitask_batch['action'])
-      rewards = tf.einsum('ij,ja->ia', selection, multitask_batch['reward'])
+      if multitask_batch['reward'].dtype == tf.float32:
+        rewards = tf.einsum('ij,ja->ia', selection32, multitask_batch['reward'])
+      else:
+        rewards = tf.einsum('ij,ja->ia', selection, multitask_batch['reward'])
     else:
       dist = tfd.Categorical(logits=logits)
       if n == 1:
