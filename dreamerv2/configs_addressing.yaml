@@ -15,6 +15,7 @@ defaults:
   prefill: 10000
   image_size: [64, 64]
   grayscale: False
+  img_channels: 3
   replay_size: 2e6
   dataset: {batch: 50, length: 50, oversample_ends: True}
   replay: {rescan: 5000, cache: 100}

@@ -99,7 +99,7 @@ class WorldModel(common.Module):
     self.config = config
     self.rssm = common.RSSM(**config.rssm)
     self.heads = {}
-    shape = config.image_size + (1 if config.grayscale else 3,)
+    shape = config.image_size + (config.img_channels,)
     self.encoder = common.ConvEncoder(**config.encoder)
     self.heads['image'] = common.ConvDecoder(shape, **config.decoder)
     self.heads['reward'] = common.MLP([], **config.reward_head)
@@ -207,8 +207,8 @@ class WorldModel(common.Module):
     #       self._writer, log_, vid
     #   )
     # self._log_step.assign_add(1)
-    return video.transpose((1, 2, 0, 3, 4)).reshape((T, H, B * W, C))
-
+    video = video.transpose((1, 2, 0, 3, 4)).reshape((T, H, B * W, C))
+    return tf.concat(tf.split(video, C // 3, 3), 1)
 
 class ActorCritic(common.Module):
 
