@@ -83,6 +83,8 @@ defaults:
     detach_multitask_embedding: False
     num_train_multitask_batches: 2
     num_query_multitask_batches: 2
+    query_full_memory: False
+    recalc_latent_freq: 200
 
   # Exploration
   expl_extr_scale: 0.0
@@ -142,8 +144,11 @@ addressing:
     detach_cnn: False
     detach_task_embedding: False
     detach_multitask_embedding: False
-    num_train_multitask_batches: 2
-    num_query_multitask_batches: 2
+    num_train_multitask_batches: 2 # number of multitask batches for training addressing
+    num_query_multitask_batches: 2 # number of multitask batches to select from during training of the dreamer
+    query_full_memory: False # whether to address over the full multitask memory 
+                             # (equals to num_query_multitask_batches * multitask.dataset.length == total multitask transitions)
+    recalc_latent_freq: 200
 
 exp_w_stand:
   multitask: 

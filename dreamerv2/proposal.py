@@ -1,5 +1,7 @@
 import tensorflow as tf
 import numpy as np
+from tqdm import tqdm
+from tensorflow.python.keras.models import Sequential
 from tensorflow_probability import distributions as tfd
 from tensorflow.keras.mixed_precision import experimental as prec
 
@@ -40,6 +42,7 @@ class RawMultitask(TrainProposal):
   def __init__(self, config, agent, step, dataset, replay):
     super().__init__(config, agent, step, dataset)
     # path = pathlib.Path(config.multitask.data_path).expanduser()
+    self.replay = replay
     self.multitask_dataset = iter(replay.dataset(**config.multitask.dataset))
   
   def select(self, logits, multitask_embedding, multitask_batch, soft, n=1):
@@ -255,6 +258,14 @@ class RetrospectiveAddressing(RawMultitask):
     self.modules = [self.addressing]
     if not self.config.addressing.detach_cnn:
       self.modules.append(self.encoder)
+    #storage
+    if self.config.addressing.query_full_memory:
+      self.query_dataset = iter(self.replay.query_dataset(self.config.dataset.batch, self.config.dataset.length))
+      self.linear_dataset = iter(self.replay.dataset(**self.config.dataset, sequential=True))
+    else:
+      self.linear_dataset = None
+      self.query_dataset = None 
+    self._updates = tf.Variable(0, tf.int64)
 
   def propose_batch(self, agnt, metrics=None):
     with self.timed.action('batch'):
@@ -275,8 +286,13 @@ class RetrospectiveAddressing(RawMultitask):
     randn = np.random.rand()
     if randn < self.config.multitask.multitask_probability:
       with self.timed.action('query'):
-        batch = self.query_memory(addr_batch, batch)
+        if self.config.addressing.query_full_memory:
+          batch, selection_metrics = self.query_large_memory(addr_batch, batch)
+        else:
+          batch, selection_metrics = self.query_memory(addr_batch, batch)
       # agent_only = self.addr_agent_only #tf.constant(self.addr_agent_only)
+      if selection_metrics is not None:
+        metrics.update(selection_metrics)
     if metrics is not None:
       metrics.update(mets)
     return batch
@@ -298,6 +314,51 @@ class RetrospectiveAddressing(RawMultitask):
     logits = state @ tf.transpose(memory)
     return logits
 
+  def put_queue(self, episodes, idx):
+    self.replay.put(zip(episodes.numpy().squeeze(), idx.numpy().squeeze()))
+
+  @tf.function
+  def query_large_memory(self, task_batch, data):
+    metrics = {}
+    if self._updates % self.config.addressing.recalc_latent_freq == 0:
+      out_type = {'latent': tf.float16, 'ep_name': tf.string, 'idx': tf.int32}
+      self.latents = tf.py_function(self.get_latents, [self.linear_dataset], out_type)
+    task_embed = self.encoder(task_batch)
+    state = self.addressing.embed(task_embed, task_batch['action'])[-1]
+    logits = state @ tf.transpose(self.latents['latent'])
+    log_probs = tf.nn.log_softmax(logits, axis=-1)
+    dist = common.OneHotDist(logits=log_probs)
+    selection = tf.math.argmax(dist.sample(), -1)
+    episodes = tf.gather(self.latents['ep_name'], selection)
+    idxes = tf.gather(self.latents['idx'], selection)
+    tf.py_function(self.put_queue, [episodes, idxes], [])
+    selected_batch = next(self.query_dataset)
+    for k in ['action', 'reward', 'discount']:
+      selected_batch[k] = tf.cast(selected_batch[k], tf.float32)
+    self._updates.assign_add(1)
+    metrics['big_select_entropy'] = dist.entropy().mean()
+    cumsum = tf.math.cumsum(tf.sort(tf.exp(log_probs), axis=1, direction='DESCENDING'), axis=1, reverse=True)
+    metrics['big_select_n09'] = tf.cast(cumsum < 0.9, tf.float32).sum(1).mean()
+    diff = tf.expand_dims(log_probs, 0) - tf.expand_dims(log_probs, 1)
+    bs = self.config.dataset.batch
+    pair_jsd = tf.reduce_sum(diff * tf.exp(tf.expand_dims(log_probs, 0))) / (bs * (bs - 1))
+    metrics['big_select_pair_jsd'] = pair_jsd
+    pct = self.config.multitask.multitask_batch_fraction
+    return self.merge_batches(selected_batch, data, pct), metrics
+
+  def get_latents(self, data):
+    latents = [self.infer_latent(batch) for batch in tqdm(data)]
+    keys = list(latents[0].keys())
+    return {k: tf.concat([l[k] for l in latents], 0) for k in keys}
+
+  # @tf.function
+  def infer_latent(self, batch):
+    print('this should print once')
+    batch = self.wm.preprocess(batch)
+    embed = self.encoder(batch)
+    state = self.addressing.embed(embed, batch['action'])[-1]
+    return {'latent': state, 'ep_name': batch['ep_name'], 'idx': batch['idx']}
+
   def query_memory(self, addr_batch, data):
     cache = []
     logits_all = []
@@ -311,7 +372,7 @@ class RetrospectiveAddressing(RawMultitask):
       logits = self.infer_address(addr_batch, addr_mt_batch)
       logits_all.append(tf.stop_gradient(logits))
     multitask_batch = self.calc_query(cache, logits_all)
-    return self.merge_batches(multitask_batch, data, pct)
+    return self.merge_batches(multitask_batch, data, pct), None
 
   @tf.function
   def calc_query(self, expert, logits, replacement=True):

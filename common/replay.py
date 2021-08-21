@@ -2,6 +2,9 @@ import datetime
 import io
 import pathlib
 import os
+import math
+import time
+from collections import deque
 import uuid
 
 import numpy as np
@@ -19,6 +22,7 @@ class Replay:
     self._step = sum(int(
         str(n).split('-')[-1][:-4]) - 1 for n in directory.glob('*.npz'))
     self._episodes = load_episodes(directory, limit)
+    self.queries = deque()
 
   @property
   def total_steps(self):
@@ -45,17 +49,41 @@ class Replay:
         else:
           del self._episodes[key]
     filename = save_episodes(self._directory, [episode])[0]
-    self._episodes[str(filename)] = episode
+    # self._episodes[str(filename)] = episode
     return filename
 
-  def dataset(self, batch, length, oversample_ends):
+  def put(self, queries):
+    for (ep_name, idx) in queries:
+      self.queries.append((ep_name, idx))
+
+  def dataset(self, batch, length, oversample_ends, sequential=False):
+    if len(self._episodes) == 0:
+      self._episodes = load_episodes(self._directory, limit=10)
     example = self._episodes[next(iter(self._episodes.keys()))]
+    if sequential:
+      example['ep_name'] = tf.constant(['111'])
+      example['idx'] = tf.convert_to_tensor([111])
     types = {k: v.dtype for k, v in example.items()}
     shapes = {k: (None,) + v.shape[1:] for k, v in example.items()}
-    generator = lambda: sample_episodes(
-        self._episodes, self._directory, length, 
-        oversample_ends, rescan=self._rescan, cache=self._cache
-    )
+    if not sequential:
+      generator = lambda: sample_episodes(
+          self._directory, length, 
+          oversample_ends, rescan=self._rescan, cache=self._cache
+      )
+    else:
+      generator = lambda: iterate_episodes(self._directory, length)
+    dataset = tf.data.Dataset.from_generator(generator, types, shapes)
+    dataset = dataset.batch(batch, drop_remainder=True)
+    dataset = dataset.prefetch(10)
+    return dataset
+
+  def query_dataset(self, batch, length):
+    example = self._episodes[next(iter(self._episodes.keys()))]
+    example['ep_name'] = tf.constant(['111'])
+    example['idx'] = tf.convert_to_tensor([111])
+    types = {k: v.dtype for k, v in example.items()}
+    shapes = {k: (None,) + v.shape[1:] for k, v in example.items()}
+    generator = lambda: query_episodes(self._directory, self.queries, length)
     dataset = tf.data.Dataset.from_generator(generator, types, shapes)
     dataset = dataset.batch(batch, drop_remainder=True)
     dataset = dataset.prefetch(10)
@@ -83,15 +111,32 @@ def save_episodes(directory, episodes):
   return filenames
 
 
-def sample_episodes(episodes, directory=None, length=None, balance=False, rescan=100, cache=None, seed=0):
+def query_episodes(directory, queue, length):
+  while True:
+    obj = None
+    while obj is None:
+      try:
+        obj = queue.popleft()
+      except:
+        time.sleep(0.01)
+    ep_name, idx = obj
+    ep_name = ep_name.decode("utf-8") 
+    with (directory / ep_name).open('rb') as f:
+      episode = np.load(f)
+      episode = {k: episode[k] for k in episode.keys()}
+      
+    chunk = {k: v[idx: idx + length] for k, v in episode.items()}
+    chunk['ep_name'] = tf.constant([ep_name])
+    chunk['idx'] = tf.convert_to_tensor([idx])
+    yield chunk
+
+
+def sample_episodes(directory=None, length=None, balance=False, rescan=100, cache=None, seed=0):
   random = np.random.RandomState(seed)
   while True:
     if cache:
-      k = next(iter(episodes.keys()))
-      ep_len = len(episodes[k]['reward']) - 1
-      for key in list(episodes.keys()):
-        del episodes[key]
-      # TODO: refactor this
+      _, episode = next(iter(load_episodes_lazy(directory, limit=10)))
+      ep_len = len(episode['reward']) - 1
       episodes = {}
       for key, val in load_episodes(directory, limit=int(cache or 0) * ep_len, random=True).items():
         episodes[key] = val
@@ -110,6 +155,39 @@ def sample_episodes(episodes, directory=None, length=None, balance=False, rescan
         episode = {k: v[index: index + length] for k, v in episode.items()}
       yield episode
 
+def iterate_episodes(directory=None, length=None):
+  for name, episode in load_episodes_lazy(directory):
+    total = len(next(iter(episode.values())))
+    if length:
+      for step in range(int(math.floor(total / length))):
+        index = step * length
+        chunk = {k: v[index: index + length] for k, v in episode.items()}
+        chunk['ep_name'] = tf.constant([name])
+        chunk['idx'] = tf.convert_to_tensor([step * length])
+        yield chunk
+    else:
+      yield episode
+
+def load_episodes_lazy(directory, limit=None, random=False):
+  directory = pathlib.Path(directory).expanduser()
+  total = 0
+  if random:
+    paths = list(directory.glob('*.npz'))
+    paths = [paths[i] for i in np.random.permutation(len(paths))]
+  else:
+    paths = reversed(sorted(directory.glob('*.npz')))
+  for filename in paths:
+    try:
+      with filename.open('rb') as f:
+        episode = np.load(f)
+        episode = {k: episode[k] for k in episode.keys()}
+    except Exception as e:
+      print(f'Could not load episode: {e}')
+      continue
+    yield str(filename), episode
+    total += len(episode['reward']) - 1
+    if limit and total >= limit:
+      break
 
 def load_episodes(directory, limit=None, random=False):
   directory = pathlib.Path(directory).expanduser()
