@@ -287,14 +287,16 @@ class RetrospectiveAddressing(RawMultitask):
         if self.config.addressing.query_full_memory:
           if self._updates % self.config.addressing.recalc_latent_freq == 0:
             self.latents = self.get_latents()
-          episodes, idxes, latents, ent, log_probs = self.query_large_memory(addr_batch, batch)
+          episodes, idxes, latents, ent, log_probs, logits = self.query_large_memory(addr_batch, batch)
           self.put_queue(episodes, idxes)
           selected_batch = next(self.query_dataset)
           for k in ['action', 'reward', 'discount']:
             selected_batch[k] = tf.cast(selected_batch[k], tf.float32)
           pct = self.config.multitask.multitask_batch_fraction
           batch = self.merge_batches(selected_batch, batch, pct)
-          selection_metrics = self.query_metrics(ent, log_probs)
+          selection_metrics = self.query_metrics(ent, log_probs, selected_batch, latents)
+          unique_pairs = len(set(zip(episodes.numpy().squeeze(), idxes.numpy().squeeze())))
+          selection_metrics['unique_pairs'] = unique_pairs
           # batch, selection_metrics
         else:
           batch, selection_metrics = self.query_memory(addr_batch, batch)
@@ -326,7 +328,7 @@ class RetrospectiveAddressing(RawMultitask):
     self.replay.put(zip(episodes.numpy().squeeze(), idx.numpy().squeeze()))
 
   @tf.function
-  def query_metrics(self, ent, log_probs):
+  def query_metrics(self, ent, log_probs, selected_batch, latents):
     metrics = {}
     self._updates.assign_add(1)
     metrics['big_select_entropy'] = ent
@@ -336,6 +338,8 @@ class RetrospectiveAddressing(RawMultitask):
     bs = self.config.dataset.batch
     pair_jsd = tf.reduce_sum(diff * tf.exp(tf.expand_dims(log_probs, 0))) / (bs * (bs - 1))
     metrics['big_select_pair_jsd'] = pair_jsd
+    metrics['big_select_reward'] = selected_batch['reward'].sum(1).mean()
+    metrics['big_select_ess'] = ((log_probs.logsumexp(1) * 2) - (log_probs * 2).logsumexp(1)).exp().mean()
     return metrics
 
   @tf.function
@@ -344,13 +348,13 @@ class RetrospectiveAddressing(RawMultitask):
     task_embed = self.encoder(task_batch)
     state = self.addressing.embed(task_embed, task_batch['action'])[-1]
     logits = state @ tf.transpose(self.latents['latent'])
-    log_probs = tf.nn.log_softmax(logits, axis=-1)
+    log_probs = tf.nn.log_softmax(logits * 50., axis=-1) # temperature is 50
     dist = common.OneHotDist(logits=tf.cast(log_probs, tf.float32))
     selection = tf.math.argmax(dist.sample(), -1)
     episodes = tf.gather(self.latents['ep_name'], selection)
     idxes = tf.gather(self.latents['idx'], selection)
     latents = tf.gather(self.latents['latent'], selection)
-    return episodes, idxes, latents, dist.entropy().mean(), log_probs
+    return episodes, idxes, latents, dist.entropy().mean(), log_probs, logits
     # tf.py_function(self.put_queue, [episodes, idxes], [])
     # selected_batch = next(self.query_dataset)
     # for k in ['action', 'reward', 'discount']:
@@ -507,6 +511,7 @@ class RetrospectiveAddressing(RawMultitask):
     bs = self.config.dataset.batch
     pair_jsd = tf.reduce_sum(diff * tf.exp(tf.expand_dims(log_probs, 0))) / (bs * (bs - 1))
     metrics['pairwise_jsd'] = pair_jsd
+    metrics['ess'] = ((log_probs.logsumexp(1) * 2) - (log_probs * 2).logsumexp(1)).exp().mean()
     metrics['address_entropy'] = dist.entropy().mean()
     metrics['address_loss'] = loss
     if kind == 'value' or 'pred' in kind:
