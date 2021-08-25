@@ -41,7 +41,7 @@ config = elements.FlagParser(config).parse(remaining)
 os.environ['CUDA_VISIBLE_DEVICES'] = str(config.gpu) #str(args.gpu)
 if config.logging.wdb:
   wandb.init(project='python-tf_dreamer', config=common.flatten_conf(config), group=config.logging.exp_name, 
-             name=config.logging.run_name)
+             name=config.logging.run_name, settings=wandb.Settings(start_method='thread'))
 if config.logging.wdb and '{run_id}' in config.logdir:
     config = config.update({'logdir': config.logdir.format(run_id=f'{wandb.run.name}_{wandb.run.id}')})
     if '{run_id}' in config.multitask.data_path:
@@ -71,7 +71,7 @@ train_replay = common.Replay(logdir / 'train_replay', config.replay_size, **conf
 eval_replay = common.Replay(logdir / 'eval_replay', config.time_limit or 1, **config.replay)
 if config.multitask.mode != 'none':
   mt_path = pathlib.Path(config.multitask.data_path).expanduser()
-  mt_replay = common.Replay(mt_path, **config.replay)
+  mt_replay = common.Replay(mt_path, load=True, **config.replay)
 else:
   mt_replay = None
 step = elements.Counter(train_replay.total_steps)
@@ -135,7 +135,7 @@ def per_episode(ep, mode):
   should = {'train': should_video_train, 'eval': should_video_eval}[mode]
   if should(step):
     logger.video(f'{mode}_policy', ep['image'])
-    if should_wdb_video(step):
+    if should_wdb_video(step) and config.logging.wdb:
       video = np.transpose(ep['image'], (0, 3, 1, 2))
       videos = []
       rows = video.shape[1] // 3
@@ -208,7 +208,7 @@ while step < config.steps:
   print('Start evaluation.')
   video = agnt.report(next(eval_dataset))
   logger.add(video, prefix='eval')
-  if should_openl_video(step):
+  if should_openl_video(step) and config.logging.wdb:
     video = (np.transpose(video['openl'], (0, 3, 1, 2)) * 255).astype(np.uint8)
     wandb.log({f"eval_openl": wandb.Video(video, fps=30, format="gif")})
   eval_policy = functools.partial(agnt.policy, mode='eval')

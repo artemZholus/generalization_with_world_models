@@ -13,7 +13,7 @@ import tensorflow as tf
 
 class Replay:
 
-  def __init__(self, directory, limit=None, rescan=1, cache=None):
+  def __init__(self, directory, limit=None, rescan=1, cache=None, load=False):
     directory.mkdir(parents=True, exist_ok=True)
     self._directory = directory
     self._limit = limit
@@ -21,7 +21,12 @@ class Replay:
     self._cache = cache
     self._step = sum(int(
         str(n).split('-')[-1][:-4]) - 1 for n in directory.glob('*.npz'))
-    self._episodes = load_episodes(directory, limit)
+    if load:
+      print('Loading episodes...')
+      self._episodes, self._total = load_episodes(directory, limit, return_total=True)
+      print('episodes loaded!')
+    else:
+      self._episodes = {}
     self.queries = deque()
 
   @property
@@ -71,7 +76,9 @@ class Replay:
           oversample_ends, rescan=self._rescan, cache=self._cache
       )
     else:
-      generator = lambda: iterate_episodes(self._directory, length)
+      generator = lambda: iterate_episodes(
+        episodes=self._episodes, directory=self._directory, length=length
+      )
     dataset = tf.data.Dataset.from_generator(generator, types, shapes)
     dataset = dataset.batch(batch, drop_remainder=True)
     dataset = dataset.prefetch(10)
@@ -83,10 +90,10 @@ class Replay:
     example['idx'] = tf.convert_to_tensor([111])
     types = {k: v.dtype for k, v in example.items()}
     shapes = {k: (None,) + v.shape[1:] for k, v in example.items()}
-    generator = lambda: query_episodes(self._directory, self.queries, length)
+    generator = lambda: query_episodes(self._episodes, self.queries, length)
     dataset = tf.data.Dataset.from_generator(generator, types, shapes)
     dataset = dataset.batch(batch, drop_remainder=True)
-    dataset = dataset.prefetch(10)
+    # dataset = dataset.prefetch(10)
     return dataset
 
   def _length(self, episode):
@@ -111,20 +118,24 @@ def save_episodes(directory, episodes):
   return filenames
 
 
-def query_episodes(directory, queue, length):
+def query_episodes(episodes, queue, length):
   while True:
     obj = None
+    c = 0
     while obj is None:
       try:
         obj = queue.popleft()
       except:
-        time.sleep(0.01)
+        print(f'Tried {c} times')
+        c += 1
+        # time.sleep(0.01)
+        pass
     ep_name, idx = obj
     ep_name = ep_name.decode("utf-8") 
-    with (directory / ep_name).open('rb') as f:
-      episode = np.load(f)
-      episode = {k: episode[k] for k in episode.keys()}
-      
+    # with (directory / ep_name).open('rb') as f:
+    #   episode = np.load(f)
+    #   episode = {k: episode[k] for k in episode.keys()}
+    episode = episodes[ep_name]
     chunk = {k: v[idx: idx + length] for k, v in episode.items()}
     chunk['ep_name'] = tf.constant([ep_name])
     chunk['idx'] = tf.convert_to_tensor([idx])
@@ -155,18 +166,23 @@ def sample_episodes(directory=None, length=None, balance=False, rescan=100, cach
         episode = {k: v[index: index + length] for k, v in episode.items()}
       yield episode
 
-def iterate_episodes(directory=None, length=None):
-  for name, episode in load_episodes_lazy(directory):
-    total = len(next(iter(episode.values())))
-    if length:
-      for step in range(int(math.floor(total / length))):
-        index = step * length
-        chunk = {k: v[index: index + length] for k, v in episode.items()}
-        chunk['ep_name'] = tf.constant([name])
-        chunk['idx'] = tf.convert_to_tensor([step * length])
-        yield chunk
+def iterate_episodes(episodes=None, directory=None, length=None):
+  while True:
+    if episodes is None:
+      iterator = load_episodes_lazy(directory)
     else:
-      yield episode
+      iterator = episodes.items()
+    for name, episode in iterator:
+      total = len(next(iter(episode.values())))
+      if length:
+        for step in range(int(math.floor(total / length))):
+          index = step * length
+          chunk = {k: v[index: index + length] for k, v in episode.items()}
+          chunk['ep_name'] = tf.constant([name])
+          chunk['idx'] = tf.convert_to_tensor([step * length])
+          yield chunk
+      else:
+        yield episode
 
 def load_episodes_lazy(directory, limit=None, random=False):
   directory = pathlib.Path(directory).expanduser()
@@ -189,10 +205,11 @@ def load_episodes_lazy(directory, limit=None, random=False):
     if limit and total >= limit:
       break
 
-def load_episodes(directory, limit=None, random=False):
+def load_episodes(directory, limit=None, random=False, return_total=False):
   directory = pathlib.Path(directory).expanduser()
   episodes = {}
   total = 0
+  ret_total = 0
   if random:
     paths = list(directory.glob('*.npz'))
     paths = [paths[i] for i in np.random.permutation(len(paths))]
@@ -208,6 +225,10 @@ def load_episodes(directory, limit=None, random=False):
       continue
     episodes[str(filename)] = episode
     total += len(episode['reward']) - 1
+    ret_total += len(episode['reward'])
     if limit and total >= limit:
       break
-  return episodes
+  if return_total:
+    return episodes, total
+  else:
+    return episodes
