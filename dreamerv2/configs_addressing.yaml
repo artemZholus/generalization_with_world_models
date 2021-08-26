@@ -215,6 +215,9 @@ mtw:
   kl.free: 1.0
   dataset.oversample_ends: False
 
+onscreen:
+  env_params: "{cameras: [corner, corner3], offscreen: False, randomize_tasks: True}"
+
 ml1:
   logging.exp_name: ml1
   logging.env_name: ml1
