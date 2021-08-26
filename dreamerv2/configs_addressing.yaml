@@ -138,7 +138,7 @@ addressing:
     optimizer: {opt: adam, lr: 1e-4, eps: 1e-5, clip: 100, wd: 1e-6}
     separate_enc_for_addr: True
     detach_cnn: False
-    detach_task_embedding: False
+    detach_task_embedding: True
     detach_multitask_embedding: False
     num_train_multitask_batches: 2 # number of multitask batches for training addressing
     num_query_multitask_batches: 2 # number of multitask batches to select from during training of the dreamer
@@ -217,6 +217,7 @@ mtw:
 ml1:
   logging.exp_name: ml1
   logging.env_name: ml1
+  logdir: $DATA/tmp_noroot/{run_id}
 
 dmc:
 
@@ -244,11 +245,13 @@ dmc_walker:
   logging.exp_name: walker_domain
   logging.env_name: run
   task: dmc_walker_run
+  logdir: $DATA/tmp_noroot/{run_id}
 
 dmc_hopper:
   logging.exp_name: hopper_domain
   logging.env_name: hop
   task: dmc_hopper_hop
+  logdir: $DATA/tmp_noroot/{run_id}
 
 debug:
 
