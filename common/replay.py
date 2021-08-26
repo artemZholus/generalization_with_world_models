@@ -155,10 +155,10 @@ def sample_episodes(directory=None, length=None, balance=False, rescan=100, cach
       episodes = {}
       for key, val in load_episodes(directory, limit=int(cache or 0) * ep_len, random=True).items():
         episodes[key] = val
-    else:
-      prev = len(episodes)
-      episodes = load_episodes(directory, current_episodes=episodes)
-      print(f'loaded {len(episodes) - prev} novel episodes')
+    # else:
+    #   prev = len(episodes)
+    #   episodes = load_episodes(directory, current_episodes=episodes)
+    #   print(f'loaded {len(episodes) - prev} novel episodes')
     for _ in range(rescan):
       episode = random.choice(list(episodes.values()))
       if length:
@@ -179,9 +179,10 @@ def iterate_episodes(episodes=None, directory=None, length=None):
     if episodes is None:
       iterator = load_episodes_lazy(directory)
     else:
-      prev = len(episodes)
-      episodes = load_episodes(directory, current_episodes=episodes)
-      print(f'loaded {len(episodes) - prev} novel episodes')
+      # prev = len(episodes)
+      # episodes = load_episodes(directory, current_episodes=episodes)
+      # print(f'loaded {len(episodes) - prev} novel episodes')
+      # print(f'total: {len(episodes)} episodes')
       iterator = episodes.items()
     for name, episode in iterator:
       total = len(next(iter(episode.values())))
