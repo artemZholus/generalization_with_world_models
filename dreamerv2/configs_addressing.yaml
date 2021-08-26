@@ -194,7 +194,8 @@ atari:
 mtw:
 
   task: metaworld_ml1_reach
-  env_params: "{cameras: [corner,], offscreen: True, randomize_tasks: True}"
+  img_channels: 6
+  env_params: "{cameras: [corner, corner3], offscreen: True, randomize_tasks: True}"
   time_limit: 500
   action_repeat: 1
   eval_every: 1e4
@@ -218,6 +219,7 @@ ml1:
   logging.exp_name: ml1
   logging.env_name: ml1
   logdir: $DATA/tmp_noroot/{run_id}
+  steps: 1e6
 
 dmc:
 
