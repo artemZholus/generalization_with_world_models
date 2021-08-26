@@ -389,7 +389,8 @@ class RetrospectiveAddressing(RawMultitask):
     print('this should print once')
     batch = self.wm.preprocess(batch)
     embed = self.encoder(batch)
-    state = self.addressing.embed(embed, batch['action'])[-1]
+    actions = self._cast(batch['action'])
+    state = self.addressing.embed(embed, actions)[-1]
     return {'latent': state, 'ep_name': batch['ep_name'], 'idx': batch['idx']}
 
   def query_memory(self, addr_batch, data):

@@ -90,7 +90,7 @@ class Replay:
     example['idx'] = tf.convert_to_tensor([111])
     types = {k: v.dtype for k, v in example.items()}
     shapes = {k: (None,) + v.shape[1:] for k, v in example.items()}
-    generator = lambda: query_episodes(self._episodes, self.queries, length)
+    generator = lambda: query_episodes(self._episodes, self._directory, self.queries, length)
     dataset = tf.data.Dataset.from_generator(generator, types, shapes)
     dataset = dataset.batch(batch, drop_remainder=True)
     # dataset = dataset.prefetch(10)
@@ -118,7 +118,7 @@ def save_episodes(directory, episodes):
   return filenames
 
 
-def query_episodes(episodes, queue, length):
+def query_episodes(episodes, directory, queue, length):
   while True:
     obj = None
     c = 0
@@ -132,10 +132,13 @@ def query_episodes(episodes, queue, length):
         pass
     ep_name, idx = obj
     ep_name = ep_name.decode("utf-8") 
-    # with (directory / ep_name).open('rb') as f:
-    #   episode = np.load(f)
-    #   episode = {k: episode[k] for k in episode.keys()}
-    episode = episodes[ep_name]
+    try:
+      episode = episodes[ep_name]
+    except KeyError:
+      with (directory / ep_name).open('rb') as f:
+        episode = np.load(f)
+        episode = {k: episode[k] for k in episode.keys()}
+        episodes[ep_name] = episode
     chunk = {k: v[idx: idx + length] for k, v in episode.items()}
     chunk['ep_name'] = tf.constant([ep_name])
     chunk['idx'] = tf.convert_to_tensor([idx])
@@ -144,6 +147,7 @@ def query_episodes(episodes, queue, length):
 
 def sample_episodes(directory=None, length=None, balance=False, rescan=100, cache=None, seed=0):
   random = np.random.RandomState(seed)
+  episodes = {}
   while True:
     if cache:
       _, episode = next(iter(load_episodes_lazy(directory, limit=10)))
@@ -151,6 +155,10 @@ def sample_episodes(directory=None, length=None, balance=False, rescan=100, cach
       episodes = {}
       for key, val in load_episodes(directory, limit=int(cache or 0) * ep_len, random=True).items():
         episodes[key] = val
+    else:
+      prev = len(episodes)
+      episodes = load_episodes(directory, current_episodes=episodes)
+      print(f'loaded {len(episodes) - prev} novel episodes')
     for _ in range(rescan):
       episode = random.choice(list(episodes.values()))
       if length:
@@ -171,6 +179,9 @@ def iterate_episodes(episodes=None, directory=None, length=None):
     if episodes is None:
       iterator = load_episodes_lazy(directory)
     else:
+      prev = len(episodes)
+      episodes = load_episodes(directory, current_episodes=episodes)
+      print(f'loaded {len(episodes) - prev} novel episodes')
       iterator = episodes.items()
     for name, episode in iterator:
       total = len(next(iter(episode.values())))
@@ -205,7 +216,8 @@ def load_episodes_lazy(directory, limit=None, random=False):
     if limit and total >= limit:
       break
 
-def load_episodes(directory, limit=None, random=False, return_total=False):
+def load_episodes(directory, limit=None, random=False, current_episodes=None, return_total=False):
+  current_episodes = current_episodes or {}
   directory = pathlib.Path(directory).expanduser()
   episodes = {}
   total = 0
@@ -216,6 +228,11 @@ def load_episodes(directory, limit=None, random=False, return_total=False):
   else:
     paths = reversed(sorted(directory.glob('*.npz')))
   for filename in paths:
+    filename_inner = filename.parts[-1]
+    if str(filename_inner) in current_episodes: 
+      episodes[str(filename_inner)] = current_episodes[str(filename_inner)]
+      total += len(episodes[str(filename_inner)]['reward']) - 1
+      continue
     try:
       with filename.open('rb') as f:
         episode = np.load(f)
