@@ -42,6 +42,10 @@ class Replay:
     return sum(int(
         str(n).split('-')[-1][:-4]) - 1 for n in self._directory.glob('*.npz'))
 
+  @property
+  def loaded_transitions(self):
+    return sum(len(ep['reward']) - 1 for name, ep in self._episodes.items())
+
   def add(self, episode):
     length = self._length(episode)
     self._step += length

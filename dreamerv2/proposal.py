@@ -376,9 +376,10 @@ class RetrospectiveAddressing(RawMultitask):
   def get_latents(self):
     print('first run')
     latents = []
+    total = self.replay.loaded_transitions
     for i, batch in tqdm(enumerate(self.replay.dataset(**self.config.dataset, sequential=True))):
       latents.append(self.infer_latent(batch))
-      if (i * latents[-1]['latent'].shape[0] * self.config.dataset.length) >= self.replay._total:
+      if ((i + 1) * latents[-1]['latent'].shape[0] * self.config.dataset.length) >= total:
         break
     # print('222\n\n',list(map(lambda x: x.decode('utf-8'), sum((latents[i]['ep_name'].numpy().squeeze().tolist()[(0 if i % 2== 0 else 10)::20] for i in range(len(latents))), []))))
     # latents = [self.infer_latent(batch) for batch in tqdm(self.replay.dataset(**self.config.dataset, sequential=True))]
