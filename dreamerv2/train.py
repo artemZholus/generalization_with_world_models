@@ -42,6 +42,14 @@ os.environ['CUDA_VISIBLE_DEVICES'] = str(config.gpu) #str(args.gpu)
 if config.logging.wdb:
   wandb.init(project='python-tf_dreamer', config=common.flatten_conf(config), group=config.logging.exp_name, 
              name=config.logging.run_name, settings=wandb.Settings(start_method='thread'))
+if '$' in config.logdir:
+  config = config.update({
+    'logdir': os.path.expandvars(config.logdir)
+  })
+if config.multitask.bootstrap:
+  config = config.update({
+    'multitask.data_path': os.path.join(config.logdir, "train_replay")
+  })
 if config.logging.wdb and '{run_id}' in config.logdir:
     config = config.update({'logdir': config.logdir.format(run_id=f'{wandb.run.name}_{wandb.run.id}')})
     if '{run_id}' in config.multitask.data_path:
