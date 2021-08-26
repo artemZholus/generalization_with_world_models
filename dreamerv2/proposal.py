@@ -404,8 +404,9 @@ class RetrospectiveAddressing(RawMultitask):
       cache.append(multitask_batch)
       logits = self.infer_address(addr_batch, addr_mt_batch)
       logits_all.append(tf.stop_gradient(logits))
-    multitask_batch = self.calc_query(cache, logits_all)
-    return self.merge_batches(multitask_batch, data, pct), None
+    multitask_batch, unique_pairs = self.calc_query(cache, logits_all)
+    metrics = {'unique_pairs': unique_pairs}
+    return self.merge_batches(multitask_batch, data, pct), metrics
 
   @tf.function
   def calc_query(self, expert, logits, replacement=True):
@@ -416,6 +417,8 @@ class RetrospectiveAddressing(RawMultitask):
       # log_probs should be 2d
       dist = common.OneHotDist(logits=log_probs)
       selection = tf.math.argmax(dist.sample(), -1)
+      uni, _ = tf.unique(selection)
+      uni = tf.shape(uni)[0]
     else:
       # TODO: select per-row argmax in 2d tensor without replacement
       gumbel = tfd.Gumbel(loc=tf.zeros_like(log_probs[0]), scale=1.)
@@ -427,7 +430,7 @@ class RetrospectiveAddressing(RawMultitask):
     }
     multitask_batch = {k: tf.gather(multitask_batch[k], selection)
                        for k in keys}
-    return multitask_batch
+    return multitask_batch, uni
 
   @tf.function
   def train_addressing(self, task_batch, multitask_batches):
