@@ -351,7 +351,8 @@ class RetrospectiveAddressing(RawMultitask):
     task_embed = self.encoder(task_batch)
     state = self.addressing.embed(task_embed, task_batch['action'])[-1]
     logits = state @ tf.transpose(self.latents['latent'])
-    log_probs = tf.nn.log_softmax(logits * 50., axis=-1) # temperature is 50
+    t = self.config.addressing.temp
+    log_probs = tf.nn.log_softmax(logits * t, axis=-1) # temperature is 10
     dist = common.OneHotDist(logits=tf.cast(log_probs, tf.float32))
     selection = tf.math.argmax(dist.sample(), -1)
     episodes = tf.gather(self.latents['ep_name'], selection)
@@ -374,7 +375,6 @@ class RetrospectiveAddressing(RawMultitask):
     # return self.merge_batches(selected_batch, data, pct), metrics
 
   def get_latents(self):
-    print('first run')
     latents = []
     total = self.replay.loaded_transitions
     for i, batch in tqdm(enumerate(self.replay.dataset(**self.config.dataset, sequential=True))):
