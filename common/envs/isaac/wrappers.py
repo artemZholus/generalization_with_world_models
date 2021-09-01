@@ -2,6 +2,50 @@ import gym
 import numpy as np
 
 
+class FrameSkip(gym.Wrapper):
+    """Return every `skip`-th frame and repeat given action during skip.
+    Note that this wrapper does not "maximize" over the skipped frames.
+    """
+    def __init__(self, env, skip=4):
+        super().__init__(env)
+        self.called = 0
+        self._skip = skip
+
+    def step(self, action):
+        total_reward = 0.0
+        for _ in range(self._skip):
+            self.called += 1
+            obs, reward, done, info = self.env.step(action)
+            total_reward += reward
+            if done:
+                break
+        return obs, total_reward, done, info
+
+
+class EpisodeLengthWrapper(gym.Wrapper):
+    def __init__(self, env, max_length=6000):
+        self.cnt = 0
+        self.max_length = max_length
+        super().__init__(env)
+
+    def reset(self, **kwargs):
+        observation = self.env.reset(**kwargs)
+        self.cnt = 0
+        return observation
+
+    def step(self, action):
+        self.cnt += 1
+        observation, reward, done, info = self.env.step(action)
+        return observation, reward, self.done(done), info
+
+    def done(self, done):
+        if done:
+            return True
+        if self.cnt >= self.max_length:
+            return True
+        return False
+
+
 class OneHot(gym.spaces.Discrete):
     def __init__(self, n):
         super().__init__(n)

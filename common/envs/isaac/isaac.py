@@ -34,7 +34,7 @@ def build_env(env_config=None):
     robot_path="data/urdf/robots/husky_ur5/husky_ur5_1.urdf",
     sparse_reward=False,
     width=w, height=h,
-    env_config_file=env_config.get('env_config_file', "./environment/env_config.yml")
+    env_config_file=env_config.get('env_config_file', "env_config.yml")
   )
   env.start()
   env = FrameSkip(env, skip=2)
@@ -84,7 +84,8 @@ class Isaac:
 
   @property
   def action_space(self):
-    return self._env.action_space
+    action = self._env.action_space
+    return gym.spaces.Dict({'action': action})
 
   def close(self):
     return self._env.close()
@@ -107,7 +108,7 @@ class Isaac:
     return self._get_obs()
 
   def step(self, action):
-    obs, reward, done, info = self._env.step(action)
+    obs, reward, done, info = self._env.step(action['action'])
     obs = np.transpose(obs, (1, 2, 0))
     info['original'] = np.transpose(info['original'], (1, 2, 0))
     obs = {'image': obs, 'original': info['original']}

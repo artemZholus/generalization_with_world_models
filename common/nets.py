@@ -204,9 +204,10 @@ class ConvEncoder(common.Module):
 class ConvDecoder(common.Module):
 
   def __init__(
-      self, shape=(64, 64, 3), depth=32, act=tf.nn.elu, kernels=(5, 5, 6, 6)):
+      self, shape=(64, 64, 3), depth=32, act=tf.nn.elu, kernels=(5, 5, 6, 6), rect=False):
     self._shape = shape
     self._depth = depth
+    self._rect = rect
     self._act = getattr(tf.nn, act) if isinstance(act, str) else act
     self._kernels = kernels
 
@@ -214,13 +215,21 @@ class ConvDecoder(common.Module):
     ConvT = tfkl.Conv2DTranspose
     x = self.get('hin', tfkl.Dense, 32 * self._depth, None)(features)
     x = tf.reshape(x, [-1, 1, 1, 32 * self._depth])
-    for i, kernel in enumerate(self._kernels):
-      depth = 2 ** (len(self._kernels) - i - 2) * self._depth
-      act = self._act
-      if i == len(self._kernels) - 1:
-        depth = self._shape[-1]
-        act = None
-      x = self.get(f'h{i}', ConvT, depth, kernel, 2, activation=act)(x)
+    if self._rect:
+      kwargs = dict(activation=self._act)
+      x = self.get('h2', tfkl.Conv2DTranspose, 4 * self._depth, 4, strides=2, **kwargs)(x)
+      x = self.get('h3', tfkl.Conv2DTranspose, 4 * self._depth, (3, 4), strides=(1, 2), **kwargs)(x)
+      x = self.get('h4', tfkl.Conv2DTranspose, 2 * self._depth, 4, strides=2, **kwargs)(x)
+      x = self.get('h5', tfkl.Conv2DTranspose, 1 * self._depth, 5, strides=2, **kwargs)(x)
+      x = self.get('h6', tfkl.Conv2DTranspose, self._shape[-1], 4, strides=2)(x)
+    else:
+      for i, kernel in enumerate(self._kernels):
+        depth = 2 ** (len(self._kernels) - i - 2) * self._depth
+        act = self._act
+        if i == len(self._kernels) - 1:
+          depth = self._shape[-1]
+          act = None
+        x = self.get(f'h{i}', ConvT, depth, kernel, 2, activation=act)(x)
     mean = tf.reshape(x, tf.concat([tf.shape(features)[:-1], self._shape], 0))
     return tfd.Independent(tfd.Normal(mean, 1), len(self._shape))
 

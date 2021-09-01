@@ -22,15 +22,16 @@ def make_env(mode, config, logdir):
     env = NormalizeAction(env)
   elif suite == 'isaac':
     from common.envs import isaac
-    w = config['environment']['width']
-    h = config['environment']['height']
+    params = yaml.safe_load(config.env_params)
+    w = params['width']
+    h = params['height']
     kwargs = {}
-    if 'env_config_file' in config['environment']:
-      kwargs['env_config_file'] = config['environment']['env_config_file']
+    env_config_file = params['config']
     env = isaac.Isaac(
-      task, config['environment']['action_repeat'], (h, w), grayscale=False,
-      onehot=config['environment']['onehot_action'],
-      episode_steps=config['environment']['episode_steps'],
+      task, config.action_repeat, (h, w), grayscale=False,
+      onehot=False,
+      episode_steps=config.time_limit,
+      env_config_file=env_config_file,
       **kwargs
     )
   else:

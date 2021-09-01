@@ -1,1 +1,1 @@
-from .isaac import Isaac
+from .isaac import Isaac, build_env

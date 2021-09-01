@@ -28,9 +28,9 @@ ENV LD_LIBRARY_PATH=/usr/local/cuda-11.0/lib64:$LD_LIBRARY_PATH
 #RUN sudo apt-get install -y --allow-downgrades --reinstall libcublas10=10.2.1.243-1 libcublas-dev=10.2.1.243-1
 
 #ENTRYPOINT /bin/bash
-ADD ./cudnn-11.0-linux-x64-v8.0.5.39.tgz /cudnn-11.0-linux-x64-v8.0.5.39.tgz
-RUN tar xczf /cudnn-11.0-linux-x64-v8.0.5.39.tgz -C /usr/local/
-RUN rm -rf /cudnn-11.0-linux-x64-v8.0.5.39.tgz
+COPY ./cudnn-11.0-linux-x64-v8.0.5.39.tgz /usr/local
+RUN tar -xvzf /usr/local/cudnn-11.0-linux-x64-v8.0.5.39.tgz -C /usr/local/
+RUN rm -rf /usr/local/cudnn-11.0-linux-x64-v8.0.5.39.tgz
 #ADD ./libcudnn7_7.6.5.32-1+cuda10.1_amd64.deb /libcudnn7_7.6.5.32-1+cuda10.1_amd64.deb
 #RUN dpkg -i /libcudnn7_7.6.5.32-1+cuda10.1_amd64.deb \
 # && rm /libcudnn7_7.6.5.32-1+cuda10.1_amd64.deb
@@ -81,7 +81,7 @@ RUN echo "source /home/user/isaac-sim/_build/linux-x86_64/release/setup_python_e
 RUN echo "source /home/user/isaac-sim/python_samples/setenv.sh" >> /home/user/.bashrc
 
 ADD . /home/user/isaac-sim/python
-RUN chown -R user /home/user/isaac-sim/python
+RUN sudo chown -R user /home/user/isaac-sim/python
 ADD ./.netrc /home/user/.netrc
 
 ENTRYPOINT /bin/bash

@@ -15,15 +15,16 @@ from omni.physx.scripts import physicsUtils, utils
 from omni.isaac.dynamic_control import _dynamic_control
 
 from pxr import UsdGeom, Gf, Sdf, Usd, PhysxSchema, PhysicsSchema, PhysicsSchemaTools, Semantics
-from robot.husky import Husky
+from ..robot.husky import Husky
 
 
 class KitchenEnv(gym.Env):
     def __init__(
             self, omni_kit, robot_path, sparse_reward, width=320, height=240, 
-            env_config_file="./environment/env_config.yml"):
-
-        with open(env_config_file, 'r') as stream:
+            env_config_file="env_config.yml"):
+        base_path = os.path.split(__file__)[0]
+        path = os.path.join(base_path, env_config_file)
+        with open(path, 'r') as stream:
             config = yaml.safe_load(stream)
 
         print(config)

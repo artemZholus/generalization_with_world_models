@@ -41,7 +41,8 @@ config = elements.FlagParser(config).parse(remaining)
 os.environ['CUDA_VISIBLE_DEVICES'] = str(config.gpu) #str(args.gpu)
 if config.logging.wdb:
   wandb.init(project='python-tf_dreamer', config=common.flatten_conf(config), group=config.logging.exp_name, 
-             name=config.logging.run_name, settings=wandb.Settings(start_method='thread'))
+             name=config.logging.run_name, #settings=wandb.Settings(start_method='thread')
+             )
 if '$' in config.logdir:
   config = config.update({
     'logdir': os.path.expandvars(config.logdir)
@@ -133,26 +134,34 @@ def per_episode(ep, mode):
 
 print('Create envs.')
 train_envs = [common.make_env('train', config, logdir) for _ in range(config.num_envs)]
-eval_envs = [common.make_env('eval', config, logdir) for _ in range(config.num_envs)]
+if 'isaac' in config.task:
+  eval_envs = train_envs
+else:
+  eval_envs = [common.make_env('eval', config, logdir) for _ in range(config.num_envs)]
 action_space = train_envs[0].action_space['action']
 train_driver = common.Driver(train_envs)
 train_driver.on_episode(lambda ep: per_episode(ep, mode='train'))
 train_driver.on_step(lambda _: step.increment())
-eval_driver = common.Driver(eval_envs)
-eval_driver.on_episode(lambda ep: per_episode(ep, mode='eval'))
+if 'isaac' not in config.task:
+  eval_driver = common.Driver(eval_envs)
+  eval_driver.on_episode(lambda ep: per_episode(ep, mode='eval'))
 
 prefill = max(0, config.prefill - train_replay.total_steps)
 if prefill:
   print(f'Prefill dataset ({prefill} steps).')
   random_agent = common.RandomAgent(action_space)
   train_driver(random_agent, steps=prefill, episodes=1)
-  eval_driver(random_agent, episodes=1)
   train_driver.reset()
-  eval_driver.reset()
+  if 'isaac' not in config.task:
+    eval_driver(random_agent, episodes=1)
+    eval_driver.reset()
 
 print('Create agent.')
 train_dataset = iter(train_replay.dataset(**config.dataset))
-eval_dataset = iter(eval_replay.dataset(**config.dataset))
+if 'isaac' not in config.task:
+  eval_dataset = iter(eval_replay.dataset(**config.dataset))
+else:
+  eval_dataset = train_dataset
 agnt = agent.Agent(config, logger, action_space, step, train_dataset)
 if 'multitask' not in config or config.multitask.mode == 'none':
   batch_proposal = proposal.TrainProposal(config, agnt, step, train_dataset)
@@ -198,7 +207,8 @@ while step < config.steps:
     video = (np.transpose(video['openl'], (0, 3, 1, 2)) * 255).astype(np.uint8)
     wandb.log({f"eval_openl": wandb.Video(video, fps=30, format="gif")})
   eval_policy = functools.partial(agnt.policy, mode='eval')
-  eval_driver(eval_policy, episodes=config.eval_eps)
+  if 'isaac' not in config.task:
+    eval_driver(eval_policy, episodes=config.eval_eps)
   print('Start training.')
   train_driver(agnt.policy, steps=config.eval_every)
   agnt.save(logdir / 'variables.pkl')
