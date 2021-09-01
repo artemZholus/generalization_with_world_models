@@ -1,0 +1,10 @@
+name: on_place
+object_type: Cube
+color: red
+size: 4
+another_place: false
+names_in_env:
+  cube_name: /World/Cube
+  place_name: /World/place
+  robot_name: /World/husky
+  background_name: /World/background

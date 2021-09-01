@@ -97,28 +97,6 @@ should_video_eval = elements.Every(config.eval_every)
 should_wdb_video = elements.Every(config.eval_every * 5)
 should_openl_video = elements.Every(config.eval_every * 5)
 
-def make_env(mode):
-  suite, task = config.task.split('_', 1)
-  if suite == 'dmc':
-    env = common.DMC(task, config.action_repeat, config.image_size)
-    env = common.NormalizeAction(env)
-  elif suite == 'atari':
-    env = common.Atari(
-        task, config.action_repeat, config.image_size, config.grayscale,
-        life_done=False, sticky_actions=True, all_actions=True)
-    env = common.OneHotAction(env)
-  elif suite == 'metaworld':
-    params = yaml.safe_load(config.env_params)
-    env = common.MetaWorld(task, config.action_repeat, config.image_size, **params)
-    env.dump_tasks(str(logdir / 'tasks.pkl'))
-    env = common.NormalizeAction(env)
-  else:
-    raise NotImplementedError(suite)
-  env = common.TimeLimit(env, config.time_limit)
-  env = common.RewardObs(env)
-  env = common.ResetObs(env)
-  return env
-
 def per_episode(ep, mode):
   length = len(ep['reward']) - 1
   score = float(ep['reward'].astype(np.float64).sum())
@@ -154,8 +132,8 @@ def per_episode(ep, mode):
   logger.write()
 
 print('Create envs.')
-train_envs = [make_env('train') for _ in range(config.num_envs)]
-eval_envs = [make_env('eval') for _ in range(config.num_envs)]
+train_envs = [common.make_env('train', config, logdir) for _ in range(config.num_envs)]
+eval_envs = [common.make_env('eval', config, logdir) for _ in range(config.num_envs)]
 action_space = train_envs[0].action_space['action']
 train_driver = common.Driver(train_envs)
 train_driver.on_episode(lambda ep: per_episode(ep, mode='train'))
