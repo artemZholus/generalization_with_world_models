@@ -84,4 +84,10 @@ ADD . /home/user/isaac-sim/python
 RUN sudo chown -R user /home/user/isaac-sim/python
 ADD ./.netrc /home/user/.netrc
 
-ENTRYPOINT /bin/bash
+RUN sudo apt-get install -y language-pack-en
+ENV LANGUAGE=en_US.utf-8
+ENV LC_ALL=en_US.utf-8
+
+RUN pip install wandb moviepy elements imageio ruamel.yaml
+
+#ENTRYPOINT /bin/bash

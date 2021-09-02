@@ -201,9 +201,10 @@ isaac:
   time_limit: 500
   image_size: [64, 96]
   action_repeat: 1
+  steps: 1e6
   eval_every: 1e4
   log_every: 1e3
-  prefill: 500
+  prefill: 5000
   train_every: 5
   pretrain: 100
   pred_discount: False
