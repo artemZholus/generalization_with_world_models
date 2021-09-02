@@ -122,7 +122,10 @@ def save_episodes(directory, episodes):
   return filenames
 
 
-def query_episodes(episodes, directory, queue, length):
+def query_episodes(episodes, directory, queue, length, max_count=100):
+  if episodes is None:
+    episodes = {}
+    counts = {}
   while True:
     obj = None
     c = 0
@@ -138,11 +141,22 @@ def query_episodes(episodes, directory, queue, length):
     ep_name = ep_name.decode("utf-8") 
     try:
       episode = episodes[ep_name]
+      if ep_name not in counts:
+        counts[ep_name] = 0
+      counts[ep_name] += 1
     except KeyError:
       with (directory / ep_name).open('rb') as f:
         episode = np.load(f)
         episode = {k: episode[k] for k in episode.keys()}
+        if len(episodes) >= max_count:
+          # TODO: min is linear time, think about faster version
+          argmin = min(counts.keys(), key=counts.__getitem__)
+          del episodes[argmin]
+          del counts[argmin]
         episodes[ep_name] = episode
+        if ep_name not in counts:
+          counts[ep_name] = 0
+        counts[ep_name] += 1
     chunk = {k: v[idx: idx + length] for k, v in episode.items()}
     chunk['ep_name'] = tf.constant([ep_name])
     chunk['idx'] = tf.convert_to_tensor([idx])
