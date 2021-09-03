@@ -249,7 +249,7 @@ class ReturnBasedProposal(RawMultitask):
 class RetrospectiveAddressing(RawMultitask):
   def __init__(self, config, agent, step, dataset, replay):
     super().__init__(config, agent, step, dataset, replay)
-    self.addressing = common.AddressNet()
+    self.addressing = common.AddressNet(ends_size=config.addressing.ends_size)
     self.encoder = self.wm.encoder
     
     if config.addressing.separate_enc_for_addr:

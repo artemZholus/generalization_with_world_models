@@ -81,6 +81,7 @@ defaults:
     query_full_memory: True
     temp: 10.
     recalc_latent_freq: 200
+    ends_size: 10
 
   # Exploration
   expl_extr_scale: 0.0

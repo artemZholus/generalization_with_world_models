@@ -146,7 +146,7 @@ def per_episode(ep, mode):
     if should_wdb_video(step) and config.logging.wdb:
       video = np.transpose(ep['image'], (0, 3, 1, 2))
       videos = []
-      rows = video.shape[1] // 3
+      rows = max([1, video.shape[1] // 3])
       for row in range(rows):
         videos.append(video[:, row * 3: (row + 1) * 3])
       video = np.concatenate(videos, 3)
