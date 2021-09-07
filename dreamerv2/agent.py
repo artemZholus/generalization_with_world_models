@@ -69,11 +69,15 @@ class Agent(common.Module):
     return outputs, state
 
   @tf.function
-  def train(self, data, state=None):
+  def train(self, data, state=None, do_wm_step=True):
     print('calling train agent')
     metrics = {}
-    state, outputs, mets = self.wm.train(data, state)
-    metrics.update(mets)
+    if do_wm_step:
+      state, outputs, mets = self.wm.train(data, state)
+    else:
+      state, outputs, mets = self.wm.wm_loss(data, state)
+    if do_wm_step:
+      metrics.update(mets)
     start = outputs['post']
     if self.config.pred_discount:  # Last step could be terminal.
       start = tf.nest.map_structure(lambda x: x[:, :-1], start)
@@ -115,6 +119,12 @@ class WorldModel(common.Module):
       model_loss, state, outputs, metrics = self.loss(data, state)
     modules = [self.encoder, self.rssm, *self.heads.values()]
     metrics.update(self.model_opt(model_tape, model_loss, modules))
+    return state, outputs, metrics
+
+  def wm_loss(self, data, state=None):
+    print('calling wm_loss')
+    with tf.GradientTape() as model_tape:
+      model_loss, state, outputs, metrics = self.loss(data, state)
     return state, outputs, metrics
 
   def loss(self, data, state=None):

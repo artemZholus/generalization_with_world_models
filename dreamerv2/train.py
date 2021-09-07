@@ -79,7 +79,7 @@ train_replay = common.Replay(logdir / 'train_replay', config.replay_size, **conf
 eval_replay = common.Replay(logdir / 'eval_replay', config.time_limit or 1, **config.replay)
 if config.multitask.mode != 'none':
   mt_path = pathlib.Path(config.multitask.data_path).expanduser()
-  mt_replay = common.Replay(mt_path, load=True, **config.replay)
+  mt_replay = common.Replay(mt_path, load=config.keep_ram, **config.replay)
 else:
   mt_replay = None
 step = elements.Counter(train_replay.total_steps)

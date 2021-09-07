@@ -15,6 +15,7 @@ defaults:
   prefill: 10000
   image_size: [64, 64]
   grayscale: False
+  keep_ram: False
   img_channels: 3
   replay_size: 2e6
   dataset: {batch: 50, length: 50, oversample_ends: True}
@@ -74,6 +75,7 @@ defaults:
     optimizer: {opt: adam, lr: 1e-4, eps: 1e-5, clip: 100, wd: 1e-6}
     separate_enc_for_addr: True
     detach_cnn: False
+    agent_only: False
     detach_task_embedding: False
     detach_multitask_embedding: False
     num_train_multitask_batches: 2
@@ -139,6 +141,7 @@ addressing:
     optimizer: {opt: adam, lr: 1e-4, eps: 1e-5, clip: 100, wd: 1e-6}
     separate_enc_for_addr: True
     detach_cnn: False
+    agent_only: False
     detach_task_embedding: True
     detach_multitask_embedding: False
     num_train_multitask_batches: 2 # number of multitask batches for training addressing
