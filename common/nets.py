@@ -306,6 +306,41 @@ class AddressNet(common.Module):
     x, new_state = self._cell(x, [prev_state])
     return new_state[0]
 
+class TwinAddressNet(AddressNet):
+  def __init__(self, hidden=200, act=tf.nn.elu, ends_size=10):
+    super().__init__(hidden, act, ends_size)
+    assert ends_size 
+    self._end_cell = tfkl.GRUCell(self.hidden)
+
+  def embed(self, obs, action, state=None):
+    if state is None:
+      state = self.initial(tf.shape(action)[0])
+    obs = tf.transpose(obs, [1, 0, 2])
+    action = tf.transpose(action, [1, 0, 2])
+    obs_start_seq = obs[:self.ends_size]
+    action_start_seq = action[:self.ends_size]
+    obs_final_seq = obs[-self.ends_size:]
+    action_final_seq = action[-self.ends_size:]
+
+    states_start_seq = common.static_scan(
+        lambda prev, inputs: self.step(prev, *inputs),
+        (action_start_seq, obs_start_seq), state)
+    states_final_seq = common.static_scan(
+        lambda prev, inputs: self.step(prev, *inputs),
+        (action_final_seq, obs_final_seq), states_start_seq[-1])
+    return tf.concat([states_start_seq, states_final_seq], 0)
+    
+  @tf.function
+  def step(self, prev_state, prev_action, state, end=False):
+    x = tf.concat([prev_state, prev_action, state], -1)
+    if not end:
+      x = self.get('l1', tfkl.Dense, self.hidden, self.act)(x)
+      x, new_state = self._cell(x, [prev_state])
+    else:
+      x = self.get('l2', tfkl.Dense, self.hidden, self.act)(x)
+      x, new_state = self._end_cell(x, [prev_state])
+    return new_state[0]
+
 class DistLayer(common.Module):
 
   def __init__(self, shape, dist='mse', min_std=0.1, init_std=0.0):
