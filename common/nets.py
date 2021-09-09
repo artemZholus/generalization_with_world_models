@@ -326,19 +326,22 @@ class TwinAddressNet(AddressNet):
         lambda prev, inputs: self.step(prev, *inputs),
         (action_start_seq, obs_start_seq), state)
     states_final_seq = common.static_scan(
-        lambda prev, inputs: self.step(prev, *inputs),
+        lambda prev, inputs: self.end_step(prev, *inputs),
         (action_final_seq, obs_final_seq), states_start_seq[-1])
     return tf.concat([states_start_seq, states_final_seq], 0)
     
   @tf.function
-  def step(self, prev_state, prev_action, state, end=False):
+  def step(self, prev_state, prev_action, state):
     x = tf.concat([prev_state, prev_action, state], -1)
-    if not end:
-      x = self.get('l1', tfkl.Dense, self.hidden, self.act)(x)
-      x, new_state = self._cell(x, [prev_state])
-    else:
-      x = self.get('l2', tfkl.Dense, self.hidden, self.act)(x)
-      x, new_state = self._end_cell(x, [prev_state])
+    x = self.get('l1', tfkl.Dense, self.hidden, self.act)(x)
+    x, new_state = self._cell(x, [prev_state])
+    return new_state[0]
+
+  @tf.function
+  def end_step(self, prev_state, prev_action, state):
+    x = tf.concat([prev_state, prev_action, state], -1)
+    x = self.get('l2', tfkl.Dense, self.hidden, self.act)(x)
+    x, new_state = self._end_cell(x, [prev_state])
     return new_state[0]
 
 class DistLayer(common.Module):
