@@ -25,14 +25,14 @@ class TrainProposal:
     def train(self, agnt):
       metrics = {}
       self.before_train()
-      batch = self.propose_batch(agnt, metrics=metrics)
+      batch, do_wm_step = self.propose_batch(agnt, metrics=metrics)
       with self.timed.action('train_agent'):
-        _, mets = agnt.train(batch)
+        _, mets = agnt.train(batch, do_wm_step=do_wm_step)
       mets.update(metrics)
       return _, mets
     
     def propose_batch(self, agnt, metrics):
-      return next(self.dataset)
+      return next(self.dataset), True
 
     def before_train(self):
       pass
@@ -104,9 +104,9 @@ class RawMultitask(TrainProposal):
     if np.random.rand() < self.config.multitask.multitask_probability:
       multitask_batch = next(self.multitask_dataset)
       pct = self.config.multitask.multitask_batch_fraction
-      return self.merge_batches(multitask_batch, task_batch, pct)
+      return self.merge_batches(multitask_batch, task_batch, pct), True
     else:
-      return task_batch
+      return task_batch, True
   
 class ReturnBasedProposal(RawMultitask):
   class Temp(common.Module):
@@ -141,7 +141,7 @@ class ReturnBasedProposal(RawMultitask):
       # agent_only = self.addr_agent_only #tf.constant(self.addr_agent_only)
     if metrics is not None:
       metrics.update(mets)
-    return batch
+    return batch, True
 
   def query_memory(self, data):
     cache = []
@@ -251,6 +251,7 @@ class RetrospectiveAddressing(RawMultitask):
     super().__init__(config, agent, step, dataset, replay)
     self.addressing = common.AddressNet()
     self.encoder = self.wm.encoder
+    self.latent_length = None
     
     if config.addressing.separate_enc_for_addr:
         self.encoder = common.ConvEncoder(config.encoder.depth, config.encoder.act, rect=config.encoder.rect)
@@ -303,12 +304,12 @@ class RetrospectiveAddressing(RawMultitask):
           # batch, selection_metrics
         else:
           batch, selection_metrics = self.query_memory(addr_batch, batch)
-      # agent_only = self.addr_agent_only #tf.constant(self.addr_agent_only)
+      agent_only = self.config.addressing.agent_only #tf.constant(self.config.addressing.agent_only)
       if selection_metrics is not None:
         metrics.update(selection_metrics)
     if metrics is not None:
       metrics.update(mets)
-    return batch
+    return batch, not agent_only
 
   def task_reward(self, observations, actions, reduce=True):
     post, _ = self.wm.rssm.observe(observations, actions)
@@ -376,10 +377,14 @@ class RetrospectiveAddressing(RawMultitask):
 
   def get_latents(self):
     latents = []
-    total = self.replay.loaded_transitions
+    if self.latent_length is None:
+      print('calculating multitask dataset size...')
+      self.latent_length = self.replay.calculate_length()
+      # self.latent_length = 10000
+      print(f'multitask dataset size: {self.latent_length}')
     for i, batch in tqdm(enumerate(self.replay.dataset(**self.config.dataset, sequential=True))):
       latents.append(self.infer_latent(batch))
-      if ((i + 1) * latents[-1]['latent'].shape[0] * self.config.dataset.length) >= total:
+      if ((i + 1) * latents[-1]['latent'].shape[0] * self.config.dataset.length) >= self.latent_length:
         break
     # print('222\n\n',list(map(lambda x: x.decode('utf-8'), sum((latents[i]['ep_name'].numpy().squeeze().tolist()[(0 if i % 2== 0 else 10)::20] for i in range(len(latents))), []))))
     # latents = [self.infer_latent(batch) for batch in tqdm(self.replay.dataset(**self.config.dataset, sequential=True))]

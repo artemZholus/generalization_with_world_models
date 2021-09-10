@@ -1,13 +1,15 @@
 name: dreamerv2
 channels:
   - default
+  - conda-forge
 dependencies:
   - python=3.6.9
   - scipy>=1.5.0
+    ffmpeg
   - numpy
   - pip:
     - gym[atari]
-    - elements
+    - git+https://github.com/artemZholus/elements.git
     - dm_control
     - ruamel.yaml
     - wandb
