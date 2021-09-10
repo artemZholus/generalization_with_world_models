@@ -219,7 +219,7 @@ class KitchenEnv(gym.Env):
 
         print("start")
         result, nucleus_server = find_nucleus_server()
-        asset_path = nucleus_server + "/Isaac"
+        asset_path = nucleus_server + "/Users/dockeruser/Isaac"
         print(asset_path)
         print("done")
 

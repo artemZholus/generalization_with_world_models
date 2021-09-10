@@ -35,7 +35,7 @@ class Husky:
         if result is False:
             carb.log_error("Could not find nucleus server with /Isaac folder")
             return
-        self.usd_path = nucleus_server + "/Isaac/Robots/Husky/husky.usd"
+        self.usd_path = nucleus_server + "/Users/dockeruser/Isaac/Robots/Husky/husky.usd"
 
         self.robot_prim = None
         self.dc = _dynamic_control.acquire_dynamic_control_interface()

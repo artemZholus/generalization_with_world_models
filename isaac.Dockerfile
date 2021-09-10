@@ -90,4 +90,4 @@ ENV LC_ALL=en_US.utf-8
 
 RUN pip install wandb moviepy elements imageio ruamel.yaml
 
-#ENTRYPOINT /bin/bash
+ENTRYPOINT /bin/bash
