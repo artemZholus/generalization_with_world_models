@@ -38,6 +38,7 @@ class Agent(common.Module):
 
   @tf.function
   def policy(self, obs, state=None, mode='train'):
+    print('calling policy')
     tf.py_function(lambda: self.step.assign(
         int(self._counter), read_value=False), [], [])
     if state is None:
@@ -68,10 +69,15 @@ class Agent(common.Module):
     return outputs, state
 
   @tf.function
-  def train(self, data, state=None):
+  def train(self, data, state=None, do_wm_step=True):
+    print('calling train agent')
     metrics = {}
-    state, outputs, mets = self.wm.train(data, state)
-    metrics.update(mets)
+    if do_wm_step:
+      state, outputs, mets = self.wm.train(data, state)
+    else:
+      state, outputs, mets = self.wm.wm_loss(data, state)
+    if do_wm_step:
+      metrics.update(mets)
     start = outputs['post']
     if self.config.pred_discount:  # Last step could be terminal.
       start = tf.nest.map_structure(lambda x: x[:, :-1], start)
@@ -97,7 +103,7 @@ class WorldModel(common.Module):
     self.config = config
     self.rssm = common.RSSM(**config.rssm)
     self.heads = {}
-    shape = config.image_size + (1 if config.grayscale else 3,)
+    shape = config.image_size + (config.img_channels,)
     self.encoder = common.ConvEncoder(**config.encoder)
     self.heads['image'] = common.ConvDecoder(shape, **config.decoder)
     self.heads['reward'] = common.MLP([], **config.reward_head)
@@ -108,13 +114,21 @@ class WorldModel(common.Module):
     self.model_opt = common.Optimizer('model', **config.model_opt)
 
   def train(self, data, state=None):
+    print('calling train wm')
     with tf.GradientTape() as model_tape:
       model_loss, state, outputs, metrics = self.loss(data, state)
     modules = [self.encoder, self.rssm, *self.heads.values()]
     metrics.update(self.model_opt(model_tape, model_loss, modules))
     return state, outputs, metrics
 
+  def wm_loss(self, data, state=None):
+    print('calling wm_loss')
+    with tf.GradientTape() as model_tape:
+      model_loss, state, outputs, metrics = self.loss(data, state)
+    return state, outputs, metrics
+
   def loss(self, data, state=None):
+    print('calling wm loss')
     data = self.preprocess(data)
     embed = self.encoder(data)
     post, prior = self.rssm.observe(embed, data['action'], state)
@@ -143,6 +157,7 @@ class WorldModel(common.Module):
     return model_loss, post, outs, metrics
 
   def imagine(self, policy, start, horizon):
+    print('calling wm imagine')
     flatten = lambda x: x.reshape([-1] + list(x.shape[2:]))
     start = {k: flatten(v) for k, v in start.items()}
     def step(prev, _):
@@ -202,8 +217,8 @@ class WorldModel(common.Module):
     #       self._writer, log_, vid
     #   )
     # self._log_step.assign_add(1)
-    return video.transpose((1, 2, 0, 3, 4)).reshape((T, H, B * W, C))
-
+    video = video.transpose((1, 2, 0, 3, 4)).reshape((T, H, B * W, C))
+    return tf.concat(tf.split(video, C // 3, 3), 1)
 
 class ActorCritic(common.Module):
 
@@ -222,6 +237,7 @@ class ActorCritic(common.Module):
     self.critic_opt = common.Optimizer('critic', **config.critic_opt)
 
   def train(self, world_model, start, reward_fn):
+    print('calling ac train')
     metrics = {}
     hor = self.config.imag_horizon
     with tf.GradientTape() as actor_tape:
@@ -238,6 +254,7 @@ class ActorCritic(common.Module):
     return metrics
 
   def actor_loss(self, feat, action, target, weight):
+    print('calling a loss')
     metrics = {}
     policy = self.actor(tf.stop_gradient(feat))
     if self.config.actor_grad == 'dynamics':
@@ -264,6 +281,7 @@ class ActorCritic(common.Module):
     return actor_loss, metrics
 
   def critic_loss(self, feat, action, target, weight):
+    print('calling c loss')
     dist = self.critic(feat)[:-1]
     target = tf.stop_gradient(target)
     critic_loss = -(dist.log_prob(target) * weight[:-1]).mean()

@@ -19,6 +19,7 @@ tf.Tensor.logsumexp = tf.math.reduce_logsumexp
 tf.Tensor.transpose = tf.transpose
 tf.Tensor.reshape = tf.reshape
 tf.Tensor.astype = tf.cast
+tf.Tensor.exp = tf.exp
 
 
 class Module(tf.Module):

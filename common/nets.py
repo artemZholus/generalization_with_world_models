@@ -175,8 +175,9 @@ class ConvEncoder(common.Module):
         for i, kernel in enumerate(self._kernels):
           depth = 2 ** i * self._depth
           x = self._act(self.get(f'h{i}', tfkl.Conv2D, depth, kernel, 2)(x))
-      x = tf.reshape(x, [x.shape[0], np.prod(x.shape[1:])])
-      shape = tf.concat([tf.shape(obs['image'])[:-3], [x.shape[-1]]], 0)
+      x_shape = tf.shape(x)
+      x = tf.reshape(x, [x_shape[0], tf.math.reduce_prod(x_shape[1:])])
+      shape = tf.concat([tf.shape(obs['image'])[:-3], tf.shape(x)[-1:]], 0)
       return tf.reshape(x, shape)
     else:
       dtype = prec.global_policy().compute_dtype

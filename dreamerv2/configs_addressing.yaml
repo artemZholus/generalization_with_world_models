@@ -5,8 +5,9 @@ defaults:
   seed: 0
   gpu: 0
   task: dmc_walker_walk
+  env_params: ''
   num_envs: 1
-  steps: 1e8
+  steps: 4e6
   eval_every: 1e5
   eval_eps: 1
   action_repeat: 1
@@ -14,8 +15,11 @@ defaults:
   prefill: 10000
   image_size: [64, 64]
   grayscale: False
+  keep_ram: False
+  img_channels: 3
   replay_size: 2e6
   dataset: {batch: 50, length: 50, oversample_ends: True}
+  replay: {rescan: 5000, cache: 100}
   precision: 16
   jit: True
 
@@ -58,13 +62,12 @@ defaults:
   slow_target_update: 100
   slow_target_fraction: 1
 
-  
-
   # Multitask
   multitask: 
     data_path: none
     dataset: {batch: 50, length: 50, oversample_ends: True}
     mode: none
+    bootstrap: False
     multitask_probability: .0
     multitask_batch_fraction: .0
   addressing: 
@@ -72,10 +75,14 @@ defaults:
     optimizer: {opt: adam, lr: 1e-4, eps: 1e-5, clip: 100, wd: 1e-6}
     separate_enc_for_addr: True
     detach_cnn: False
+    agent_only: False
     detach_task_embedding: False
     detach_multitask_embedding: False
     num_train_multitask_batches: 2
     num_query_multitask_batches: 2
+    query_full_memory: True
+    temp: 10.
+    recalc_latent_freq: 200
 
   # Dyne
   embeddings:
@@ -120,8 +127,6 @@ defaults:
 v1:
   train_every: 1000
   train_steps: 100
-  time_limit: 1000
-  action_repeat: 1
   log_every: 1e3
   pred_discount: False
   grad_heads: [image, reward]
@@ -130,7 +135,7 @@ v1:
   decoder: {depth: 32, act: relu, kernels: [5, 5, 6, 6]}
   reward_head: {layers: 2, units: 400, act: elu, dist: mse}
   discount_head: {layers: 3, units: 400, act: elu, dist: binary}
-  loss_scales.kl: 0.1
+  loss_scales.kl: 1.0
 
   kl: {free: 3.0, forward: False, balance: 0.5, free_avg: True}
   model_opt: {opt: adam, lr: 6e-4, eps: 1e-5, clip: 100, wd: 0.0}
@@ -146,9 +151,10 @@ v1:
 
 addressing:
   multitask: 
-    data_path: '/data/expert_buff/w_walk_600r_1000e/episodes'
+    data_path: '$DATA/expert_buff/w_walk_600r_1000e/episodes'
     dataset: {batch: 51, length: 50, oversample_ends: True}
     mode: addressing
+    bootstrap: False
     multitask_probability: 0.5 # expert_batch_prop
     multitask_batch_fraction: 0.5
   addressing:
@@ -156,32 +162,37 @@ addressing:
     optimizer: {opt: adam, lr: 1e-4, eps: 1e-5, clip: 100, wd: 1e-6}
     separate_enc_for_addr: True
     detach_cnn: False
-    detach_task_embedding: False
+    agent_only: False
+    detach_task_embedding: True
     detach_multitask_embedding: False
-    num_train_multitask_batches: 2
-    num_query_multitask_batches: 2
+    num_train_multitask_batches: 2 # number of multitask batches for training addressing
+    num_query_multitask_batches: 2 # number of multitask batches to select from during training of the dreamer
+    query_full_memory: False # whether to address over the full multitask memory 
+                             # (equals to num_query_multitask_batches * multitask.dataset.length == total multitask transitions)
+    temp: 10.
+    recalc_latent_freq: 200
 
 exp_w_stand:
   multitask: 
-    data_path: '/data/expert_buff/w_stand_1000e/episodes'
+    data_path: '$DATA/multitask_buff/w_stand_1000e/episodes'
 
 exp_w_walk:
   multitask: 
-    data_path: '/data/expert_buff/w_walk_600r_1000e/episodes'
+    data_path: '$DATA/multitask_buff/w_walk_600r_1000e/episodes'
 
 exp_w_run:
   multitask: 
-    data_path: '/data/expert_buff/w_run_500r_1000e/episodes'
+    data_path: '$DATA/multitask_buff/w_run_500r_1000e/episodes'
 
 raw_multitask:
   multitask: 
-    data_path: '/data/expert_buff/w_walk_600r_1000e/episodes'
+    data_path: '$DATA/multitask_buff/w_walk_600r_1000e/episodes'
     dataset: {batch: 50, length: 50, oversample_ends: True}
     mode: raw
     multitask_probability: 0.5 # expert_batch_prop
     multitask_batch_fraction: 0.5
 
-addressing_dyne_v1:
+dyne_v1:
   dataset: {batch: 50, length: 52, oversample_ends: True}
   embeddings:
     data_path: '/data/expert_buff/w_walk_1000e/episodes'
@@ -235,13 +246,15 @@ atari:
   loss_scales.discount: 5.0
   .*\.wd$: 1e-6
 
-dmc:
+mtw:
 
-  task: dmc_walker_walk
-  time_limit: 1000
-  action_repeat: 2
+  task: metaworld_ml1_reach
+  img_channels: 6
+  env_params: "{cameras: [corner, corner3], offscreen: True, randomize_tasks: True}"
+  time_limit: 500
+  action_repeat: 1
   eval_every: 1e4
-  log_every: 1e4
+  log_every: 1e3
   prefill: 5000
   train_every: 5
   pretrain: 100
@@ -257,6 +270,49 @@ dmc:
   kl.free: 1.0
   dataset.oversample_ends: False
 
+onscreen:
+  env_params: "{cameras: [corner, corner3], offscreen: False, randomize_tasks: True}"
+
+ml1:
+  logging.exp_name: ml1
+  logging.env_name: ml1
+  logdir: $DATA/tmp_noroot/{run_id}
+  steps: 1e6
+
+dmc:
+
+  task: dmc_walker_walk
+  time_limit: 1000
+  action_repeat: 2
+  eval_every: 1e4
+  log_every: 1e3
+  prefill: 5000
+  train_every: 5
+  pretrain: 100
+  pred_discount: False
+  grad_heads: [image, reward]
+  rssm: {hidden: 200, deter: 200}
+  model_opt.lr: 3e-4
+  actor_opt.lr: 8e-5
+  critic_opt.lr: 8e-5
+  actor_ent: 1e-4
+  discount: 0.99
+  actor_grad: dynamics
+  kl.free: 1.0
+  dataset.oversample_ends: False
+
+dmc_walker:
+  logging.exp_name: walker_domain
+  logging.env_name: run
+  task: dmc_walker_run
+  logdir: $DATA/tmp_noroot/{run_id}
+
+dmc_hopper:
+  logging.exp_name: hopper_domain
+  logging.env_name: hop
+  task: dmc_hopper_hop
+  logdir: $DATA/tmp_noroot/{run_id}
+
 debug:
 
   jit: False
@@ -268,3 +324,14 @@ debug:
   # train_steps: 1
   dataset.batch: 12
   dataset.length: 50
+debug2:
+
+  jit: False
+  # time_limit: 100
+  # eval_every: 300
+  # log_every: 300
+  # prefill: 100
+  pretrain: 1
+  # train_steps: 1
+  # dataset.batch: 12
+  # dataset.length: 50

@@ -42,10 +42,21 @@ config = elements.FlagParser(config).parse(remaining)
 os.environ['CUDA_VISIBLE_DEVICES'] = str(config.gpu) #str(args.gpu)
 if config.logging.wdb:
   wandb.init(project='python-tf_dreamer', config=common.flatten_conf(config), group=config.logging.exp_name, 
-             name=config.logging.run_name)
+             name=config.logging.run_name, settings=wandb.Settings(start_method='thread'))
+if '$' in config.logdir:
+  config = config.update({
+    'logdir': os.path.expandvars(config.logdir)
+  })
+if config.multitask.bootstrap:
+  config = config.update({
+    'multitask.data_path': os.path.join(config.logdir, "train_replay")
+  })
 if config.logging.wdb and '{run_id}' in config.logdir:
     config = config.update({'logdir': config.logdir.format(run_id=f'{wandb.run.name}_{wandb.run.id}')})
-
+    if '{run_id}' in config.multitask.data_path:
+      config = config.update(
+        {'multitask.data_path': config.multitask.data_path.format(run_id=f'{wandb.run.name}_{wandb.run.id}')}
+      )
 logdir = pathlib.Path(config.logdir).expanduser()
 config = config.update(
     steps=config.steps // config.action_repeat,
@@ -65,8 +76,13 @@ if config.precision == 16:
   prec.set_policy(prec.Policy('mixed_float16'))
 
 print('Logdir', logdir)
-train_replay = common.Replay(logdir / 'train_replay', config.replay_size)
-eval_replay = common.Replay(logdir / 'eval_replay', config.time_limit or 1)
+train_replay = common.Replay(logdir / 'train_replay', config.replay_size, **config.replay)
+eval_replay = common.Replay(logdir / 'eval_replay', config.time_limit or 1, **config.replay)
+if config.multitask.mode != 'none':
+  mt_path = pathlib.Path(config.multitask.data_path).expanduser()
+  mt_replay = common.Replay(mt_path, load=config.keep_ram, **config.replay)
+else:
+  mt_replay = None
 step = elements.Counter(train_replay.total_steps)
 outputs = [
     elements.TerminalOutput(),
@@ -79,6 +95,8 @@ should_train = elements.Every(config.train_every)
 should_log = elements.Every(config.log_every)
 should_video_train = elements.Every(config.eval_every)
 should_video_eval = elements.Every(config.eval_every)
+should_wdb_video = elements.Every(config.eval_every * 5)
+should_openl_video = elements.Every(config.eval_every * 5)
 
 def make_env(mode):
   suite, task = config.task.split('_', 1)
@@ -90,6 +108,11 @@ def make_env(mode):
         task, config.action_repeat, config.image_size, config.grayscale,
         life_done=False, sticky_actions=True, all_actions=True)
     env = common.OneHotAction(env)
+  elif suite == 'metaworld':
+    params = yaml.safe_load(config.env_params)
+    env = common.MetaWorld(task, config.action_repeat, config.image_size, **params)
+    env.dump_tasks(str(logdir / 'tasks.pkl'))
+    env = common.NormalizeAction(env)
   else:
     raise NotImplementedError(suite)
   env = common.TimeLimit(env, config.time_limit)
@@ -102,7 +125,10 @@ def per_episode(ep, mode):
   score = float(ep['reward'].astype(np.float64).sum())
   print(f'{mode.title()} episode has {length} steps and return {score:.1f}.')
   replay_ = dict(train=train_replay, eval=eval_replay)[mode]
-  replay_.add(ep)
+  ep_file = replay_.add(ep)
+  if mode == 'train' and config.multitask.bootstrap:
+    # mt_replay.add(ep)
+    mt_replay._episodes[str(ep_file)] = ep
   logger.scalar(f'{mode}_transitions', replay_.num_transitions)
   logger.scalar(f'{mode}_return', score)
   logger.scalar(f'{mode}_length', length)
@@ -118,6 +144,15 @@ def per_episode(ep, mode):
   should = {'train': should_video_train, 'eval': should_video_eval}[mode]
   if should(step):
     logger.video(f'{mode}_policy', ep['image'])
+    if should_wdb_video(step) and config.logging.wdb:
+      video = np.transpose(ep['image'], (0, 3, 1, 2))
+      videos = []
+      rows = video.shape[1] // 3
+      for row in range(rows):
+        videos.append(video[:, row * 3: (row + 1) * 3])
+      video = np.concatenate(videos, 3)
+      if config.logging.wdb:
+        wandb.log({f"{mode}_policy": wandb.Video(video, fps=30, format="gif")})
   logger.write()
 
 print('Create envs.')
@@ -162,12 +197,14 @@ agnt = agent.Agent(config, logger, action_space, step, train_dataset)
 if 'multitask' not in config or config.multitask.mode == 'none':
   batch_proposal = proposal.TrainProposal(config, agnt, step, train_dataset)
 elif config.multitask.mode == 'raw':
-  batch_proposal = proposal.RawMultitask(config, agnt, step, train_dataset)
+  batch_proposal = proposal.RawMultitask(config, agnt, step, train_dataset, mt_replay)
+elif config.multitask.mode == 'return':
+  batch_proposal = proposal.ReturnBasedProposal(config, agnt, step, train_dataset, mt_replay)
 elif config.multitask.mode == 'addressing':
-  batch_proposal = proposal.RetrospectiveAddressing(config, agnt, step, train_dataset)
+  batch_proposal = proposal.RetrospectiveAddressing(config, agnt, step, train_dataset, mt_replay)
 elif config.multitask.mode == 'addressing_dyne':
-  batch_proposal = proposal.DyneRetrospectiveAddressing(config, agnt, step, train_dataset, trainer.dyne_encoder)
-
+  batch_proposal = proposal.DyneRetrospectiveAddressing(config, agnt, step, train_dataset, mt_replay, trainer.dyne_encoder)
+print('Agent created')
 if (logdir / 'variables.pkl').exists():
   agnt.load(logdir / 'variables.pkl')
 else:
@@ -197,7 +234,11 @@ train_driver.on_step(train_step)
 while step < config.steps:
   logger.write()
   print('Start evaluation.')
-  logger.add(agnt.report(next(eval_dataset)), prefix='eval')
+  video = agnt.report(next(eval_dataset))
+  logger.add(video, prefix='eval')
+  if should_openl_video(step) and config.logging.wdb:
+    video = (np.transpose(video['openl'], (0, 3, 1, 2)) * 255).astype(np.uint8)
+    wandb.log({f"eval_openl": wandb.Video(video, fps=30, format="gif")})
   eval_policy = functools.partial(agnt.policy, mode='eval')
   eval_driver(eval_policy, episodes=config.eval_eps)
   print('Start training.')
