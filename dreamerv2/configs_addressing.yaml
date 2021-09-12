@@ -205,7 +205,7 @@ dyne_v1:
       obs_net_encoder: {depth: 32, act: relu, kernels: [4, 4, 4, 4], keys: [image], rect: False}
       obs_net_dist: {layers: 0, units: 400, act: relu, dist: logvar_normal}
       recon_net: {layers: 2, units: 400, act: relu, dist: normal}
-      image_net: {shape: [64, 64, 3], depth: 32, act: relu, kernels: [5, 5, 6, 6]}
+      image_net: {shape: [64, 64, 6], depth: 32, act: relu, kernels: [5, 5, 6, 6]}
     trainer:
       mode: sa_dyne
       training_steps: 10000
@@ -218,7 +218,7 @@ dyne_v1:
     dataset: {batch: 50, length: 52, oversample_ends: True}
   addressing:
     detach_cnn: True
-    separate_enc_for_addr: False
+    separate_enc_for_addr: True
 
 
 atari:

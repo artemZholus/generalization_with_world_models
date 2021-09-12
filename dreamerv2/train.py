@@ -179,8 +179,10 @@ train_dataset = iter(train_replay.dataset(**config.dataset))
 eval_dataset = iter(eval_replay.dataset(**config.dataset))
 if config.embeddings.trainer.mode == 'sa_dyne':
   path = pathlib.Path(config.embeddings.data_path).expanduser()
-  dyne_dataset = iter(common.Replay(path).dataset(length=config.embeddings.traj_len, 
-                                                  **config.embeddings.dataset))
+  dyne_dataset = iter(common.Replay(path).dataset(length=config.embeddings.traj_len,
+                                                  sequential=True,
+                                                  **config.embeddings.dataset
+                                                  ))
   dyne_encoder = embeddings.SADyneEncoder(config.embeddings.dyne, 
                                           config.embeddings.traj_len, 
                                           action_space)
