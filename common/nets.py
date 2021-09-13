@@ -275,10 +275,11 @@ class GRUCell(tf.keras.layers.AbstractRNNCell):
 
 
 class AddressNet(common.Module):
-  def __init__(self, hidden=200, act=tf.nn.elu):
+  def __init__(self, hidden=200, act=tf.nn.elu, actions_only=False):
     super().__init__()
     self.hidden = hidden
     self.act = act
+    self.actions_only = actions_only
     self._cell = tfkl.GRUCell(self.hidden)
 
   def initial(self, batch_size):
@@ -290,9 +291,12 @@ class AddressNet(common.Module):
       state = self.initial(tf.shape(action)[0])
     obs = tf.transpose(obs, [1, 0, 2])
     action = tf.transpose(action, [1, 0, 2])
+    inputs = (action, obs)
+    if self.actions_only:
+      inputs = (obs, )
     states = common.static_scan(
         lambda prev, inputs: self.step(prev, *inputs),
-        (action, obs), state)
+        inputs, state)
     return states
     
   @tf.function

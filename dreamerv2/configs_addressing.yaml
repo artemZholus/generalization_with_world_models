@@ -83,6 +83,7 @@ defaults:
     query_full_memory: True
     temp: 10.
     recalc_latent_freq: 200
+    actions_only: False
 
   # Dyne
   embeddings:
