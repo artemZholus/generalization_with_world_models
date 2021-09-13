@@ -90,7 +90,7 @@ class Replay:
       )
     dataset = tf.data.Dataset.from_generator(generator, types, shapes)
     dataset = dataset.batch(batch, drop_remainder=True)
-    dataset = dataset.prefetch(50)
+    dataset = dataset.prefetch(10)
     return dataset
 
   def query_dataset(self, batch, length):
