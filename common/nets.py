@@ -295,13 +295,14 @@ class AddressNet(common.Module):
     if self.actions_only:
       inputs = (obs, )
     states = common.static_scan(
-        lambda prev, inputs: self.step(prev, *inputs),
-        inputs, state)
+        self.step, inputs, state)
     return states
     
   @tf.function
-  def step(self, prev_state, prev_action, state):
-    x = tf.concat([prev_state, prev_action, state], -1)
+  def step(self, prev_state, inputs):
+    # inputs should be tuple with order like this:
+    # (prev_action, state) or (prev_action, )
+    x = tf.concat([prev_state, *inputs], -1)
     x = self.get('l1', tfkl.Dense, self.hidden, self.act)(x)
     x, new_state = self._cell(x, [prev_state])
     return new_state[0]
