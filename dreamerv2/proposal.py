@@ -1,6 +1,7 @@
 import tensorflow as tf
 import numpy as np
 from tqdm import tqdm
+from tensorflow.keras import layers as tfkl
 from tensorflow.python.keras.models import Sequential
 from tensorflow_probability import distributions as tfd
 from tensorflow.keras.mixed_precision import experimental as prec
@@ -251,12 +252,13 @@ class RetrospectiveAddressing(RawMultitask):
     super().__init__(config, agent, step, dataset, replay)
     self.addressing = common.AddressNet()
     self.encoder = self.wm.encoder
+    self.attention = common.Module()
     self.latent_length = None
     
     if config.addressing.separate_enc_for_addr:
         self.encoder = common.ConvEncoder(config.encoder.depth, config.encoder.act, rect=config.encoder.rect)
     self.opt = common.Optimizer('addr', **config.addressing.optimizer)
-    self.modules = [self.addressing]
+    self.modules = [self.addressing, self.attention]
     if not self.config.addressing.detach_cnn:
       self.modules.append(self.encoder)
     #storage
@@ -325,7 +327,9 @@ class RetrospectiveAddressing(RawMultitask):
     state = self.addressing.embed(task_embed, task_batch['action'])[-1]
     memory = self.addressing.embed(multitask_embed, multitask_batch['action'])[-1]
     # 1st dim - obj; 2nd dim - dist
-    logits = state @ tf.transpose(memory)
+    key = self.attention.get("key", tfkl.Dense, self.addressing.hidden, tf.nn.elu)(state)
+    value = self.attention.get("value", tfkl.Dense, self.addressing.hidden, tf.nn.elu)(memory)
+    logits = key @ tf.transpose(value)
     return logits
 
   def put_queue(self, episodes, idx):
@@ -471,11 +475,13 @@ class RetrospectiveAddressing(RawMultitask):
           multitask_obs = tf.stop_gradient(multitask_obs)
       state = self.addressing.embed(task_obs, task_actions)[-1]
       memory = self.addressing.embed(multitask_obs, multitask_actions)[-1]
+      key = self.attention.get("key", tfkl.Dense, self.addressing.hidden, tf.nn.elu)(state)
+      value = self.attention.get("value", tfkl.Dense, self.addressing.hidden, tf.nn.elu)(memory)
       if self.config.addressing.detach_task_embedding:
-        state = tf.stop_gradient(state)
+        key = tf.stop_gradient(key)
       elif self.config.addressing.detach_multitask_embedding:
-        memory = tf.stop_gradient(memory)
-      logits = state @ tf.transpose(memory)
+        value = tf.stop_gradient(value)
+      logits = key @ tf.transpose(value)
       log_probs = tf.nn.log_softmax(logits, axis=-1)
       kind = self.config.addressing.kind
       if 'reinforce' in kind:
