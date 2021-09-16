@@ -81,7 +81,7 @@ defaults:
     num_train_multitask_batches: 2
     num_query_multitask_batches: 2
     query_full_memory: True
-    attention_kind: 'single_matrix'
+    attention_kind: None
     attention_units: 300
     temp: 10.
     recalc_latent_freq: 200
@@ -171,6 +171,7 @@ addressing:
     num_query_multitask_batches: 2 # number of multitask batches to select from during training of the dreamer
     query_full_memory: False # whether to address over the full multitask memory 
                              # (equals to num_query_multitask_batches * multitask.dataset.length == total multitask transitions)
+    attention_kind: None
     temp: 10.
     recalc_latent_freq: 200
 
