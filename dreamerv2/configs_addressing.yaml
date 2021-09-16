@@ -81,6 +81,8 @@ defaults:
     num_train_multitask_batches: 2
     num_query_multitask_batches: 2
     query_full_memory: True
+    attention_kind: 'single_matrix'
+    attention_units: 300
     temp: 10.
     recalc_latent_freq: 200
 

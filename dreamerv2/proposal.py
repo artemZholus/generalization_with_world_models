@@ -252,15 +252,17 @@ class RetrospectiveAddressing(RawMultitask):
     super().__init__(config, agent, step, dataset, replay)
     self.addressing = common.AddressNet()
     self.encoder = self.wm.encoder
-    self.attention = common.Module()
     self.latent_length = None
     
     if config.addressing.separate_enc_for_addr:
         self.encoder = common.ConvEncoder(config.encoder.depth, config.encoder.act, rect=config.encoder.rect)
     self.opt = common.Optimizer('addr', **config.addressing.optimizer)
-    self.modules = [self.addressing, self.attention]
+    self.modules = [self.addressing]
     if not self.config.addressing.detach_cnn:
       self.modules.append(self.encoder)
+    if self.config.addressing.attention_kind:
+      self.attention = common.Module()
+      self.modules.append(self.attention)
     #storage
     if self.config.addressing.query_full_memory:
       self.query_dataset = iter(self.replay.query_dataset(self.config.dataset.batch, self.config.dataset.length))
@@ -327,9 +329,13 @@ class RetrospectiveAddressing(RawMultitask):
     state = self.addressing.embed(task_embed, task_batch['action'])[-1]
     memory = self.addressing.embed(multitask_embed, multitask_batch['action'])[-1]
     # 1st dim - obj; 2nd dim - dist
-    key = self.attention.get("key", tfkl.Dense, self.addressing.hidden, tf.nn.elu)(state)
-    value = self.attention.get("value", tfkl.Dense, self.addressing.hidden, tf.nn.elu)(memory)
-    logits = key @ tf.transpose(value)
+    addr_config = self.config.addressing
+    if addr_config.attention_kind == 'single_matrix':
+      state = self.attention.get("attention", tfkl.Dense, self.addressing.hidden, tf.nn.elu)(state)
+    if addr_config.attention_kind == 'double_matrix':
+      state = self.attention.get("key", tfkl.Dense, addr_config.attention_units, tf.nn.elu)(state)
+      memory = self.attention.get("value", tfkl.Dense, addr_config.attention_units, tf.nn.elu)(memory)
+    logits = state @ tf.transpose(memory)
     return logits
 
   def put_queue(self, episodes, idx):
@@ -473,16 +479,23 @@ class RetrospectiveAddressing(RawMultitask):
         multitask_wm_obs = multitask_obs
       if self.config.addressing.detach_cnn:
           multitask_obs = tf.stop_gradient(multitask_obs)
+
       state = self.addressing.embed(task_obs, task_actions)[-1]
       memory = self.addressing.embed(multitask_obs, multitask_actions)[-1]
-      key = self.attention.get("key", tfkl.Dense, self.addressing.hidden, tf.nn.elu)(state)
-      value = self.attention.get("value", tfkl.Dense, self.addressing.hidden, tf.nn.elu)(memory)
       if self.config.addressing.detach_task_embedding:
-        key = tf.stop_gradient(key)
+        state = tf.stop_gradient(state)
       elif self.config.addressing.detach_multitask_embedding:
-        value = tf.stop_gradient(value)
-      logits = key @ tf.transpose(value)
+        memory = tf.stop_gradient(memory)
+
+      addr_config = self.config.addressing
+      if addr_config.attention_kind == 'single_matrix':
+        state = self.attention.get("attention", tfkl.Dense, self.addressing.hidden, tf.nn.elu)(state)
+      if addr_config.attention_kind == 'double_matrix':
+        state = self.attention.get("key", tfkl.Dense, addr_config.attention_units, tf.nn.elu)(state)
+        memory = self.attention.get("value", tfkl.Dense, addr_config.attention_units, tf.nn.elu)(memory)
+      logits = state @ tf.transpose(memory)
       log_probs = tf.nn.log_softmax(logits, axis=-1)
+
       kind = self.config.addressing.kind
       if 'reinforce' in kind:
         dist, selection, selected_wm_obs, selected_actions, selected_rewards = self.select(
