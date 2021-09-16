@@ -172,8 +172,8 @@ addressing:
     query_full_memory: False # whether to address over the full multitask memory 
                              # (equals to num_query_multitask_batches * multitask.dataset.length == total multitask transitions)
     attention_kind: None
-    temp: 10.
-    recalc_latent_freq: 200
+    temp: 50. # for same task experiment 50 was used; for multitask, it was 10
+    recalc_latent_freq: 400
 
 exp_w_stand:
   multitask: 
