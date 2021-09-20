@@ -21,6 +21,8 @@ class Agent(common.Module):
       self.step = tf.Variable(int(self._counter), tf.int64)
     self._dataset = dataset
     self.wm = WorldModel(self.step, config)
+    if config.zero_shot:
+      self._zero_shot_ac = ActorCritic(config, self.step, self._num_act) 
     self._task_behavior = ActorCritic(config, self.step, self._num_act)
     self.reward = lambda f, s, a: self.wm.heads['reward'](f).mode()
     self._expl_behavior = dict(
@@ -37,7 +39,7 @@ class Agent(common.Module):
     pass
 
   @tf.function
-  def policy(self, obs, state=None, mode='train'):
+  def policy(self, obs, state=None, mode='train', second_agent=False):
     print('calling policy')
     tf.py_function(lambda: self.step.assign(
         int(self._counter), read_value=False), [], [])
@@ -53,14 +55,19 @@ class Agent(common.Module):
     sample = (mode == 'train') or not self.config.eval_state_mean
     latent, _ = self.wm.rssm.obs_step(latent, action, embed, sample)
     feat = self.wm.rssm.get_feat(latent)
+    behaviour = self._task_behavior
+    expl_behavour = self._expl_behavior
+    if second_agent:
+      behaviour = self._zero_shot_ac
+      expl_behavour = self._zero_shot_ac
     if mode == 'eval':
-      actor = self._task_behavior.actor(feat)
+      actor = behaviour.actor(feat)
       action = actor.mode()
     elif self._should_expl(self.step):
-      actor = self._expl_behavior.actor(feat)
+      actor = expl_behavour.actor(feat)
       action = actor.sample()
     else:
-      actor = self._task_behavior.actor(feat)
+      actor = behaviour.actor(feat)
       action = actor.sample()
     noise = {'train': self.config.expl_noise, 'eval': self.config.eval_noise}
     action = common.action_noise(action, noise[mode], self._action_space)
@@ -69,7 +76,7 @@ class Agent(common.Module):
     return outputs, state
 
   @tf.function
-  def train(self, data, state=None, do_wm_step=True):
+  def train(self, data, state=None, do_wm_step=True, do_ac_step=True):
     print('calling train agent')
     metrics = {}
     if do_wm_step:
@@ -82,7 +89,11 @@ class Agent(common.Module):
     if self.config.pred_discount:  # Last step could be terminal.
       start = tf.nest.map_structure(lambda x: x[:, :-1], start)
     reward = lambda f, s, a: self.wm.heads['reward'](f).mode()
-    metrics.update(self._task_behavior.train(self.wm, start, reward))
+    if self.config.zero_shot:
+      zs_metrics = self._zero_shot_ac.train(self.wm, start, reward)
+      metrics.update({f'zero-shot/{k}': v for k, v in zs_metrics.items()})
+    if do_ac_step:
+      metrics.update(self._task_behavior.train(self.wm, start, reward))
     if self.config.expl_behavior != 'greedy':
       if self.config.pred_discount:
         data = tf.nest.map_structure(lambda x: x[:, :-1], data)

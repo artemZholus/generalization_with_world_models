@@ -227,10 +227,11 @@ class ConvDecoder(common.Module):
 
 class MLP(common.Module):
 
-  def __init__(self, shape, layers, units, act=tf.nn.elu, **out):
+  def __init__(self, shape, layers, units, act=tf.nn.elu, dist_layer=True, **out):
     self._shape = (shape,) if isinstance(shape, int) else shape
     self._layers = layers
     self._units = units
+    self._dist_layer = dist_layer
     self._act = getattr(tf.nn, act) if isinstance(act, str) else act
     self._out = out
 
@@ -238,7 +239,13 @@ class MLP(common.Module):
     x = tf.cast(features, prec.global_policy().compute_dtype)
     for index in range(self._layers):
       x = self.get(f'h{index}', tfkl.Dense, self._units, self._act)(x)
-    return self.get('out', DistLayer, self._shape, **self._out)(x)
+    if self._dist_layer:
+      return self.get('out', DistLayer, self._shape, **self._out)(x)
+    else:
+      if x.shape[-1] == self._shape[0]:
+        return x
+      else:
+        return self.get(f'hout', tfkl.Dense, self._shape[0], tf.identity)(x)
 
 
 class GRUCell(tf.keras.layers.AbstractRNNCell):

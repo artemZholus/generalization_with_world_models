@@ -92,6 +92,7 @@ outputs = [
 logger = elements.Logger(step, outputs, multiplier=config.action_repeat)
 metrics = collections.defaultdict(list)
 should_train = elements.Every(config.train_every)
+should_train_zero_shot = elements.Every(config.zero_shot_agent.train_every)
 should_log = elements.Every(config.log_every)
 should_video_train = elements.Every(config.eval_every)
 should_video_eval = elements.Every(config.eval_every)
@@ -133,14 +134,14 @@ def per_episode(ep, mode):
   logger.scalar(f'{mode}_return', score)
   logger.scalar(f'{mode}_length', length)
   logger.scalar(f'{mode}_eps', replay_.num_episodes)
-  if mode == 'train':
-    summ = {
-      f'{config.logging.env_name}/return': score,
-      'env_step': replay_.num_transitions,
-      f'{config.logging.env_name}/length': length
-    }
-    if config.logging.wdb:
-      wandb.log(summ)
+  prefix = 'eval/' if mode == 'eval' else ''
+  summ = {
+    f'{prefix}{config.logging.env_name}/return': score,
+    f'{prefix}env_step': replay_.num_transitions,
+    f'{prefix}{config.logging.env_name}/length': length
+  }
+  if config.logging.wdb:
+    wandb.log(summ)
   should = {'train': should_video_train, 'eval': should_video_eval}[mode]
   if should(step):
     logger.video(f'{mode}_policy', ep['image'])

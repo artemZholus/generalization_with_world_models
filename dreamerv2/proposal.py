@@ -26,9 +26,9 @@ class TrainProposal:
     def train(self, agnt):
       metrics = {}
       self.before_train()
-      batch, do_wm_step = self.propose_batch(agnt, metrics=metrics)
+      batch, do_wm_step, do_ac_step = self.propose_batch(agnt, metrics=metrics)
       with self.timed.action('train_agent'):
-        _, mets = agnt.train(batch, do_wm_step=do_wm_step)
+        _, mets = agnt.train(batch, do_wm_step=do_wm_step, do_ac_step=do_ac_step)
       mets.update(metrics)
       return _, mets
     
@@ -250,7 +250,8 @@ class ReturnBasedProposal(RawMultitask):
 class RetrospectiveAddressing(RawMultitask):
   def __init__(self, config, agent, step, dataset, replay):
     super().__init__(config, agent, step, dataset, replay)
-    self.addressing = common.AddressNet()
+    self.hidden = config.addressing.hidden
+    self.addressing = common.AddressNet(hidden=self.hidden)
     self.encoder = self.wm.encoder
     self.latent_length = None
     
@@ -260,9 +261,10 @@ class RetrospectiveAddressing(RawMultitask):
     self.modules = [self.addressing]
     if not self.config.addressing.detach_cnn:
       self.modules.append(self.encoder)
-    if self.config.addressing.attention_kind:
-      self.attention = common.Module()
-      self.modules.append(self.attention)
+    self.query = common.MLP([self.hidden], **self.config.addressing.query, dist_layer=False)
+    self.key = common.MLP([self.hidden], **self.config.addressing.key,  dist_layer=False)
+    self.modules.append(self.query)
+    self.modules.append(self.key)
     #storage
     if self.config.addressing.query_full_memory:
       self.query_dataset = iter(self.replay.query_dataset(self.config.dataset.batch, self.config.dataset.length))
@@ -329,13 +331,9 @@ class RetrospectiveAddressing(RawMultitask):
     state = self.addressing.embed(task_embed, task_batch['action'])[-1]
     memory = self.addressing.embed(multitask_embed, multitask_batch['action'])[-1]
     # 1st dim - obj; 2nd dim - dist
-    addr_config = self.config.addressing
-    if addr_config.attention_kind == 'single_matrix':
-      state = self.attention.get("attention", tfkl.Dense, self.addressing.hidden, tf.nn.elu)(state)
-    if addr_config.attention_kind == 'double_matrix':
-      state = self.attention.get("key", tfkl.Dense, addr_config.attention_units, tf.nn.elu)(state)
-      memory = self.attention.get("value", tfkl.Dense, addr_config.attention_units, tf.nn.elu)(memory)
-    logits = state @ tf.transpose(memory)
+    query = self.query(state)
+    keys = self.key(memory)
+    logits = query @ tf.transpose(keys)
     return logits
 
   def put_queue(self, episodes, idx):
@@ -361,7 +359,8 @@ class RetrospectiveAddressing(RawMultitask):
     metrics = {}
     task_embed = self.encoder(task_batch)
     state = self.addressing.embed(task_embed, task_batch['action'])[-1]
-    logits = state @ tf.transpose(self.latents['latent'])
+    query = self.query(state)
+    logits = query @ tf.transpose(self.latents['latent'])
     t = self.config.addressing.temp
     log_probs = tf.nn.log_softmax(logits * t, axis=-1) # temperature is 10
     dist = common.OneHotDist(logits=tf.cast(log_probs, tf.float32))
@@ -401,12 +400,16 @@ class RetrospectiveAddressing(RawMultitask):
     return {k: tf.concat([l[k] for l in latents], 0) for k in ['latent', 'ep_name', 'idx']}
 
   @tf.function
-  def infer_latent(self, batch):
+  def infer_latent(self, batch, is_query=False):
     print('this should print once')
     batch = self.wm.preprocess(batch)
     embed = self.encoder(batch)
     actions = self._cast(batch['action'])
     state = self.addressing.embed(embed, actions)[-1]
+    if is_query:
+      state = self.query(state)
+    else:
+      state = self.key(state)
     return {'latent': state, 'ep_name': batch['ep_name'], 'idx': batch['idx']}
 
   def query_memory(self, addr_batch, data):
@@ -487,13 +490,9 @@ class RetrospectiveAddressing(RawMultitask):
       elif self.config.addressing.detach_multitask_embedding:
         memory = tf.stop_gradient(memory)
 
-      addr_config = self.config.addressing
-      if addr_config.attention_kind == 'single_matrix':
-        state = self.attention.get("attention", tfkl.Dense, self.addressing.hidden, tf.nn.elu)(state)
-      if addr_config.attention_kind == 'double_matrix':
-        state = self.attention.get("key", tfkl.Dense, addr_config.attention_units, tf.nn.elu)(state)
-        memory = self.attention.get("value", tfkl.Dense, addr_config.attention_units, tf.nn.elu)(memory)
-      logits = state @ tf.transpose(memory)
+      query = self.query(state)
+      keys = self.key(memory)
+      logits = query @ tf.transpose(keys)
       log_probs = tf.nn.log_softmax(logits, axis=-1)
 
       kind = self.config.addressing.kind
@@ -542,6 +541,15 @@ class RetrospectiveAddressing(RawMultitask):
     diff = tf.expand_dims(log_probs, 0) - tf.expand_dims(log_probs, 1)
     bs = self.config.dataset.batch
     pair_jsd = tf.reduce_sum(diff * tf.exp(tf.expand_dims(log_probs, 0))) / (bs * (bs - 1))
+    qs = self.query(state)
+    ks = self.key(state)
+    qm = self.query(memory)
+    km = self.key(memory)
+    metrics['query_diff'] = ((qs - ks) ** 2).sum(1).mean()
+    metrics['key_diff'] = ((qm - km) ** 2).sum(1).mean()
+    metrics['memory_var'] = ((tf.expand_dims(km.mean(0), 0) - km) ** 2).sum(1).mean()
+    metrics['state_var'] = ((tf.expand_dims(qs.mean(0), 0) - qs) ** 2).sum(1).mean()
+    metrics['selected_advantage'] = (selected_rewards - task_batch['reward']).sum(1).mean()
     metrics['pairwise_jsd'] = pair_jsd
     metrics['ess'] = ((log_probs.logsumexp(1) * 2) - (log_probs * 2).logsumexp(1)).exp().mean()
     metrics['address_entropy'] = dist.entropy().mean()

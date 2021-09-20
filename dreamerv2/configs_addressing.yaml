@@ -37,6 +37,7 @@ defaults:
 
   # World Model
   pred_discount: True
+  zero_shot: False
   grad_heads: [image, reward, discount]
   rssm: {hidden: 400, deter: 400, stoch: 32, discrete: 32, act: elu, std_act: sigmoid2, min_std: 0.1}
   encoder: {depth: 48, act: elu, kernels: [4, 4, 4, 4], keys: [image], rect: False}
@@ -62,6 +63,10 @@ defaults:
   slow_target_update: 100
   slow_target_fraction: 1
 
+  zero_shot_agent:
+    enabled: False
+    train_every: 1
+
   # Multitask
   multitask: 
     data_path: none
@@ -72,6 +77,7 @@ defaults:
     multitask_batch_fraction: .0
   addressing: 
     kind: none
+    hidden: 200
     optimizer: {opt: adam, lr: 1e-4, eps: 1e-5, clip: 100, wd: 1e-6}
     separate_enc_for_addr: True
     detach_cnn: False
@@ -81,8 +87,8 @@ defaults:
     num_train_multitask_batches: 2
     num_query_multitask_batches: 2
     query_full_memory: True
-    attention_kind: None
-    attention_units: 300
+    query: {layers: 0, units: 300, act: elu}
+    key: {layers: 0, units: 300, act: elu}
     temp: 10.
     recalc_latent_freq: 200
 
@@ -161,6 +167,7 @@ addressing:
     multitask_batch_fraction: 0.5
   addressing:
     kind: reinforce_pred
+    hidden: 200
     optimizer: {opt: adam, lr: 1e-4, eps: 1e-5, clip: 100, wd: 1e-6}
     separate_enc_for_addr: True
     detach_cnn: False
@@ -171,7 +178,6 @@ addressing:
     num_query_multitask_batches: 2 # number of multitask batches to select from during training of the dreamer
     query_full_memory: False # whether to address over the full multitask memory 
                              # (equals to num_query_multitask_batches * multitask.dataset.length == total multitask transitions)
-    attention_kind: None
     temp: 50. # for same task experiment 50 was used; for multitask, it was 10
     recalc_latent_freq: 400
 
