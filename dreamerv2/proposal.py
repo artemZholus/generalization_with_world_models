@@ -26,14 +26,14 @@ class TrainProposal:
     def train(self, agnt):
       metrics = {}
       self.before_train()
-      batch, do_wm_step, do_ac_step = self.propose_batch(agnt, metrics=metrics)
+      batch, do_wm_step, do_ac_step, do_zs_step = self.propose_batch(agnt, metrics=metrics)
       with self.timed.action('train_agent'):
-        _, mets = agnt.train(batch, do_wm_step=do_wm_step, do_ac_step=do_ac_step)
+        _, mets = agnt.train(batch, None, do_wm_step, do_ac_step, do_zs_step)
       mets.update(metrics)
       return _, mets
     
     def propose_batch(self, agnt, metrics):
-      return next(self.dataset), True
+      return next(self.dataset), True, True, False
 
     def before_train(self):
       pass
@@ -44,6 +44,8 @@ class RawMultitask(TrainProposal):
     super().__init__(config, agent, step, dataset)
     # path = pathlib.Path(config.multitask.data_path).expanduser()
     self.replay = replay
+    self.train_wm = self.config.addressing.train_wm
+    self.train_ac = self.config.addressing.train_ac
     self.multitask_dataset = iter(replay.dataset(**config.multitask.dataset))
   
   def select(self, logits, multitask_embedding, multitask_batch, soft, n=1):
@@ -105,9 +107,9 @@ class RawMultitask(TrainProposal):
     if np.random.rand() < self.config.multitask.multitask_probability:
       multitask_batch = next(self.multitask_dataset)
       pct = self.config.multitask.multitask_batch_fraction
-      return self.merge_batches(multitask_batch, task_batch, pct), True
+      return self.merge_batches(multitask_batch, task_batch, pct), self.train_wm, self.train_ac, False
     else:
-      return task_batch, True
+      return task_batch, True, True, True
   
 class ReturnBasedProposal(RawMultitask):
   class Temp(common.Module):
@@ -131,7 +133,8 @@ class ReturnBasedProposal(RawMultitask):
         multitask_batches.append(self.wm.preprocess(next(self.multitask_dataset)))
     with self.timed.action('train_addressing'):
       mets = self.train_proposal(multitask_batches)
-    agent_only = False #tf.constant(False)
+    if metrics is not None:
+      metrics.update(mets)
     # addressing_probability == expert_batch_prop
     with self.timed.action('batch'):
       batch = next(self.dataset)
@@ -139,10 +142,10 @@ class ReturnBasedProposal(RawMultitask):
     if randn < self.config.multitask.multitask_probability:
       with self.timed.action('query'):
         batch = self.query_memory(batch)
-      # agent_only = self.addr_agent_only #tf.constant(self.addr_agent_only)
-    if metrics is not None:
-      metrics.update(mets)
-    return batch, True
+      return batch, self.train_wm, self.train_ac, False
+    else:
+      return batch, True, True, True
+    
 
   def query_memory(self, data):
     cache = []
@@ -284,7 +287,8 @@ class RetrospectiveAddressing(RawMultitask):
         multitask_batches.append(self.wm.preprocess(next(self.multitask_dataset)))
     with self.timed.action('train_addressing'):
       mets = self.train_addressing(batch, multitask_batches)
-    agent_only = False #tf.constant(False)
+    if metrics is not None:
+      metrics.update(mets)
     # addressing_probability == expert_batch_prop
     with self.timed.action('batch'):
       batch = next(self.dataset)
@@ -310,12 +314,12 @@ class RetrospectiveAddressing(RawMultitask):
           # batch, selection_metrics
         else:
           batch, selection_metrics = self.query_memory(addr_batch, batch)
-      agent_only = self.config.addressing.agent_only #tf.constant(self.config.addressing.agent_only)
       if selection_metrics is not None:
         metrics.update(selection_metrics)
-    if metrics is not None:
-      metrics.update(mets)
-    return batch, not agent_only
+      return batch, self.train_wm, self.train_ac, False
+    else:
+      return batch, True, True, True
+    
 
   def task_reward(self, observations, actions, reduce=True):
     post, _ = self.wm.rssm.observe(observations, actions)

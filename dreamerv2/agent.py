@@ -76,7 +76,7 @@ class Agent(common.Module):
     return outputs, state
 
   @tf.function
-  def train(self, data, state=None, do_wm_step=True, do_ac_step=True):
+  def train(self, data, state=None, do_wm_step=True, do_ac_step=True, do_zs_step=True):
     print('calling train agent')
     metrics = {}
     if do_wm_step:
@@ -89,7 +89,7 @@ class Agent(common.Module):
     if self.config.pred_discount:  # Last step could be terminal.
       start = tf.nest.map_structure(lambda x: x[:, :-1], start)
     reward = lambda f, s, a: self.wm.heads['reward'](f).mode()
-    if self.config.zero_shot:
+    if self.config.zero_shot and do_zs_step:
       zs_metrics = self._zero_shot_ac.train(self.wm, start, reward)
       metrics.update({f'zero-shot/{k}': v for k, v in zs_metrics.items()})
     if do_ac_step:

@@ -64,6 +64,8 @@ defaults:
   slow_target_fraction: 1
 
   zero_shot_agent:
+    eval_eps: 1
+    eval_every: 1
     enabled: False
     train_every: 1
 
@@ -81,7 +83,8 @@ defaults:
     optimizer: {opt: adam, lr: 1e-4, eps: 1e-5, clip: 100, wd: 1e-6}
     separate_enc_for_addr: True
     detach_cnn: False
-    agent_only: False
+    train_wm: True # do wm step on multitask batch
+    train_ac: True # do ac step on multitask batch
     detach_task_embedding: False
     detach_multitask_embedding: False
     num_train_multitask_batches: 2
@@ -171,11 +174,12 @@ addressing:
     optimizer: {opt: adam, lr: 1e-4, eps: 1e-5, clip: 100, wd: 1e-6}
     separate_enc_for_addr: True
     detach_cnn: False
-    agent_only: False
     detach_task_embedding: True
     detach_multitask_embedding: False
     num_train_multitask_batches: 2 # number of multitask batches for training addressing
     num_query_multitask_batches: 2 # number of multitask batches to select from during training of the dreamer
+    train_wm: True # do wm step on multitask batch
+    train_ac: True # do ac step on multitask batch
     query_full_memory: False # whether to address over the full multitask memory 
                              # (equals to num_query_multitask_batches * multitask.dataset.length == total multitask transitions)
     temp: 50. # for same task experiment 50 was used; for multitask, it was 10

@@ -83,6 +83,8 @@ if config.multitask.mode != 'none':
   mt_replay = common.Replay(mt_path, load=config.keep_ram, **config.replay)
 else:
   mt_replay = None
+if config.zero_shot:
+  zs_eval_replay = common.Replay(logdir / 'zs_eval_replay', config.time_limit or 1, **config.replay)
 step = elements.Counter(train_replay.total_steps)
 outputs = [
     elements.TerminalOutput(),
@@ -92,10 +94,11 @@ outputs = [
 logger = elements.Logger(step, outputs, multiplier=config.action_repeat)
 metrics = collections.defaultdict(list)
 should_train = elements.Every(config.train_every)
-should_train_zero_shot = elements.Every(config.zero_shot_agent.train_every)
+# should_train_zero_shot = elements.Every(config.zero_shot_agent.train_every)
 should_log = elements.Every(config.log_every)
 should_video_train = elements.Every(config.eval_every)
 should_video_eval = elements.Every(config.eval_every)
+should_video_zs_eval = elements.Every(config.zero_shot_agent.eval_every)
 should_wdb_video = elements.Every(config.eval_every * 5)
 should_openl_video = elements.Every(config.eval_every * 5)
 
@@ -125,7 +128,9 @@ def per_episode(ep, mode):
   length = len(ep['reward']) - 1
   score = float(ep['reward'].astype(np.float64).sum())
   print(f'{mode.title()} episode has {length} steps and return {score:.1f}.')
-  replay_ = dict(train=train_replay, eval=eval_replay)[mode]
+  replay_ = dict(train=train_replay, 
+                 eval=eval_replay,
+                 zs_eval=zs_eval_replay)[mode]
   ep_file = replay_.add(ep)
   if mode == 'train' and config.multitask.bootstrap:
     # mt_replay.add(ep)
@@ -134,15 +139,19 @@ def per_episode(ep, mode):
   logger.scalar(f'{mode}_return', score)
   logger.scalar(f'{mode}_length', length)
   logger.scalar(f'{mode}_eps', replay_.num_episodes)
-  prefix = 'eval/' if mode == 'eval' else ''
+  prefix = dict(train='',
+                eval='eval/',
+                zs_eval='zs_eval/')[mode]
   summ = {
     f'{prefix}{config.logging.env_name}/return': score,
-    f'{prefix}env_step': replay_.num_transitions,
+    f'{prefix}env_step'.replace('/', '_'): replay_.num_transitions,
     f'{prefix}{config.logging.env_name}/length': length
   }
   if config.logging.wdb:
     wandb.log(summ)
-  should = {'train': should_video_train, 'eval': should_video_eval}[mode]
+  should = {'train': should_video_train, 
+            'eval': should_video_eval,
+            'zs_eval': should_video_zs_eval}[mode]
   if should(step):
     logger.video(f'{mode}_policy', ep['image'])
     if should_wdb_video(step) and config.logging.wdb:
@@ -159,12 +168,15 @@ def per_episode(ep, mode):
 print('Create envs.')
 train_envs = [make_env('train') for _ in range(config.num_envs)]
 eval_envs = [make_env('eval') for _ in range(config.num_envs)]
+zs_eval_envs = [make_env('zs_eval') for _ in range(config.num_envs)]
 action_space = train_envs[0].action_space['action']
 train_driver = common.Driver(train_envs)
 train_driver.on_episode(lambda ep: per_episode(ep, mode='train'))
 train_driver.on_step(lambda _: step.increment())
 eval_driver = common.Driver(eval_envs)
 eval_driver.on_episode(lambda ep: per_episode(ep, mode='eval'))
+zs_eval_driver = common.Driver(zs_eval_envs)
+zs_eval_driver.on_episode(lambda ep: per_episode(ep, mode='zs_eval'))
 
 prefill = max(0, config.prefill - train_replay.total_steps)
 if prefill:
@@ -172,12 +184,15 @@ if prefill:
   random_agent = common.RandomAgent(action_space)
   train_driver(random_agent, steps=prefill, episodes=1)
   eval_driver(random_agent, episodes=1)
+  zs_eval_driver(random_agent, episodes=1)
   train_driver.reset()
   eval_driver.reset()
+  zs_eval_driver.reset()
 
 print('Create agent.')
 train_dataset = iter(train_replay.dataset(**config.dataset))
 eval_dataset = iter(eval_replay.dataset(**config.dataset))
+zs_eval_dataset = iter(zs_eval_replay.dataset(**config.dataset))
 if config.embeddings.trainer.mode == 'sa_dyne':
   path = pathlib.Path(config.embeddings.data_path).expanduser()
   dyne_dataset = iter(common.Replay(path).dataset(length=config.embeddings.traj_len,
@@ -244,6 +259,9 @@ while step < config.steps:
     wandb.log({f"eval_openl": wandb.Video(video, fps=30, format="gif")})
   eval_policy = functools.partial(agnt.policy, mode='eval')
   eval_driver(eval_policy, episodes=config.eval_eps)
+  if config.zero_shot:
+    zs_eval_policy = functools.partial(agnt.policy, mode='eval', second_agent=True)
+    zs_eval_driver(zs_eval_policy, episodes=config.zero_shot_agent.eval_eps)
   print('Start training.')
   train_driver(agnt.policy, steps=config.eval_every)
   agnt.save(logdir / 'variables.pkl')
