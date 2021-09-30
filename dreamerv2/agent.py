@@ -153,7 +153,7 @@ class WorldModel(common.Module):
       inp = feat if grad_head else tf.stop_gradient(feat)
       like = tf.cast(head(inp).log_prob(data[name]), tf.float32)
       likes[name] = like
-      if name == 'reward':
+      if name == 'reward' and not self.config.multitask.same_task:
         like = (like * data['reward_mask']).sum() / data['reward_mask'].sum()
       losses[name] = -like.mean()
     model_loss = sum(

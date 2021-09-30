@@ -26,14 +26,19 @@ class TrainProposal:
     def train(self, agnt):
       metrics = {}
       self.before_train()
-      batch, do_wm_step, do_ac_step, do_zs_step = self.propose_batch(agnt, metrics=metrics)
+      batch, do_wm_step, do_ac_step = self.propose_batch(agnt, metrics=metrics)
       with self.timed.action('train_agent'):
-        _, mets = agnt.train(batch, None, do_wm_step, do_ac_step, do_zs_step)
-      mets.update(metrics)
-      return _, mets
+        _, agent_mets = agnt.train(batch, None, do_wm_step, do_ac_step, False)
+      metrics.update(agent_mets)
+      if self.config.zero_shot:
+        task_zs_batch = next(self.dataset)
+        with self.timed.action('train_zs_agent'):
+          _, zs_agent_mets = agnt.train(task_zs_batch, None, False, False, True)
+      metrics.update(zs_agent_mets)
+      return _, metrics
     
     def propose_batch(self, agnt, metrics):
-      return next(self.dataset), True, True, False
+      return next(self.dataset), True, True
 
     def before_train(self):
       pass
@@ -107,9 +112,9 @@ class RawMultitask(TrainProposal):
     if np.random.rand() < self.config.multitask.multitask_probability:
       multitask_batch = next(self.multitask_dataset)
       pct = self.config.multitask.multitask_batch_fraction
-      return self.merge_batches(multitask_batch, task_batch, pct), self.train_wm, self.train_ac, False
+      return self.merge_batches(multitask_batch, task_batch, pct), self.train_wm, self.train_ac
     else:
-      return task_batch, True, True, True
+      return task_batch, True, True
   
 class ReturnBasedProposal(RawMultitask):
   class Temp(common.Module):
@@ -142,9 +147,9 @@ class ReturnBasedProposal(RawMultitask):
     if randn < self.config.multitask.multitask_probability:
       with self.timed.action('query'):
         batch = self.query_memory(batch)
-      return batch, self.train_wm, self.train_ac, False
+      return batch, self.train_wm, self.train_ac
     else:
-      return batch, True, True, True
+      return batch, True, True
     
 
   def query_memory(self, data):
@@ -316,9 +321,9 @@ class RetrospectiveAddressing(RawMultitask):
           batch, selection_metrics = self.query_memory(addr_batch, batch)
       if selection_metrics is not None:
         metrics.update(selection_metrics)
-      return batch, self.train_wm, self.train_ac, False
+      return batch, self.train_wm, self.train_ac
     else:
-      return batch, True, True, True
+      return batch, True, True
     
 
   def task_reward(self, observations, actions, reduce=True):

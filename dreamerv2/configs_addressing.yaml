@@ -75,6 +75,7 @@ defaults:
     dataset: {batch: 50, length: 50, oversample_ends: True}
     mode: none
     bootstrap: False
+    same_task: False
     multitask_probability: .0
     multitask_batch_fraction: .0
   addressing: 
