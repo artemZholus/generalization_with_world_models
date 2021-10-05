@@ -189,12 +189,19 @@ class ConvEncoder(common.Module):
           semilog = tf.sign(value) * tf.math.log(1 + tf.abs(value))
           features.append(semilog[..., None])
         elif len(obs[key].shape) >= 4:
-          x = tf.reshape(obs['image'], (-1,) + tuple(obs['image'].shape[-3:]))
-          for i, kernel in enumerate(self._kernels):
-            depth = 2 ** i * self._depth
-            x = self._act(self.get(f'h{i}', tfkl.Conv2D, depth, kernel, 2)(x))
+          x = tf.reshape(obs[key], (-1,) + tuple(obs[key].shape[-3:]))
+          if self._rect:
+            x = self._act(self.get(f'h0', tfkl.Conv2D, 1 * self._depth, 4, 2)(x))
+            x = self._act(self.get(f'h1', tfkl.Conv2D, 2 * self._depth, 4, 2)(x))
+            x = self._act(self.get(f'h2', tfkl.Conv2D, 4 * self._depth, 4, 2)(x))
+            x = self._act(self.get(f'h3', tfkl.Conv2D, 4 * self._depth, 3, (1, 2))(x))
+            x = self._act(self.get(f'h4', tfkl.Conv2D, 8 * self._depth, 3, 1)(x))
+          else:
+            for i, kernel in enumerate(self._kernels):
+              depth = 2 ** i * self._depth
+              x = self._act(self.get(f'h{i}', tfkl.Conv2D, depth, kernel, 2)(x))
           x = tf.reshape(x, [x.shape[0], np.prod(x.shape[1:])])
-          shape = tf.concat([tf.shape(obs['image'])[:-3], [x.shape[-1]]], 0)
+          shape = tf.concat([tf.shape(obs[key])[:-3], [x.shape[-1]]], 0)
           features.append(tf.reshape(x, shape))
         else:
           raise NotImplementedError((key, value.dtype, value.shape))

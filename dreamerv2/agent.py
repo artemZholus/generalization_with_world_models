@@ -44,17 +44,25 @@ class Agent(common.Module):
     tf.py_function(lambda: self.step.assign(
         int(self._counter), read_value=False), [], [])
     if state is None:
-      latent = self.wm.rssm.initial(len(obs['image']))
+      latent = self.wm.subj_rssm.initial(len(obs['image']))
       action = tf.zeros((len(obs['image']), self._num_act))
       state = latent, action
     elif obs['reset'].any():
       state = tf.nest.map_structure(lambda x: x * common.pad_dims(
           1.0 - tf.cast(obs['reset'], x.dtype), len(x.shape)), state)
-    latent, action = state
-    embed = self.wm.encoder(self.wm.preprocess(obs))
+    latent0, action = state
+    data = self.wm.preprocess(obs)
+    embed = self.wm.subj_encoder(data)
     sample = (mode == 'train') or not self.config.eval_state_mean
-    latent, _ = self.wm.rssm.obs_step(latent, action, embed, sample)
-    feat = self.wm.rssm.get_feat(latent)
+    if not (isinstance(latent0, dict) and 'subj_layer' in latent0):
+      latent0 = {'subj_layer': latent0, 'obj_layer': latent0}
+    subj_latent, _ = self.wm.subj_rssm.obs_step(latent0['subj_layer'], action, embed, sample)
+    obj_embed = self.wm.obj_encoder(data)
+    subj_action = self.wm.objective_input(subj_latent)
+    obj_latent, _ = self.wm.obj_rssm.obs_step(latent0['obj_layer'], subj_action, obj_embed, sample)
+    subj_feat = self.wm.subj_rssm.get_feat(subj_latent)
+    obj_feat = self.wm.obj_rssm.get_feat(obj_latent)
+    feat = tf.concat([subj_feat, obj_feat], -1)
     behaviour = self._task_behavior
     expl_behavour = self._expl_behavior
     if second_agent:
@@ -72,6 +80,7 @@ class Agent(common.Module):
     noise = {'train': self.config.expl_noise, 'eval': self.config.eval_noise}
     action = common.action_noise(action, noise[mode], self._action_space)
     outputs = {'action': action}
+    latent = {'subj_layer': subj_latent, 'obj_layer': obj_latent}
     state = (latent, action)
     return outputs, state
 
@@ -85,7 +94,7 @@ class Agent(common.Module):
       state, outputs, mets = self.wm.wm_loss(data, state)
     if do_wm_step:
       metrics.update(mets)
-    start = outputs['post']
+    start = {'subj_layer': outputs['subj_post'], 'obj_layer': outputs['obj_post']}
     if self.config.pred_discount:  # Last step could be terminal.
       start = tf.nest.map_structure(lambda x: x[:, :-1], start)
     reward = lambda f, s, a: self.wm.heads['reward'](f).mode()
@@ -112,10 +121,13 @@ class WorldModel(common.Module):
   def __init__(self, step, config):
     self.step = step
     self.config = config
-    self.rssm = common.RSSM(**config.rssm)
+    self.subj_rssm = common.RSSM(**config.rssm)
+    self.obj_rssm = common.RSSM(**config.rssm)
     self.heads = {}
     shape = config.image_size + (config.img_channels,)
-    self.encoder = common.ConvEncoder(**config.encoder)
+    del config.encoder['keys']
+    self.subj_encoder = common.ConvEncoder(**config.encoder.update(keys=['subj_image']))
+    self.obj_encoder = common.ConvEncoder(**config.encoder.update(keys=['obj_image']))
     self.heads['image'] = common.ConvDecoder(shape, **config.decoder)
     self.heads['reward'] = common.MLP([], **config.reward_head)
     if config.pred_discount:
@@ -128,7 +140,10 @@ class WorldModel(common.Module):
     print('calling train wm')
     with tf.GradientTape() as model_tape:
       model_loss, state, outputs, metrics = self.loss(data, state)
-    modules = [self.encoder, self.rssm, *self.heads.values()]
+    modules = [
+      self.subj_encoder, self.obj_encoder,
+      self.subj_rssm, self.obj_rssm,
+      *self.heads.values()]
     metrics.update(self.model_opt(model_tape, model_loss, modules))
     return state, outputs, metrics
 
@@ -138,16 +153,31 @@ class WorldModel(common.Module):
       model_loss, state, outputs, metrics = self.loss(data, state)
     return state, outputs, metrics
 
+  def objective_input(self, subjective_post):
+    feat = self.subj_rssm.get_feat(subjective_post)
+    return tf.stop_gradient(feat)
+
   def loss(self, data, state=None):
     print('calling wm loss')
     data = self.preprocess(data)
-    embed = self.encoder(data)
-    post, prior = self.rssm.observe(embed, data['action'], state)
-    kl_loss, kl_value = self.rssm.kl_loss(post, prior, **self.config.kl)
-    assert len(kl_loss.shape) == 0
+    subj_embed = self.subj_encoder(data)
+    obj_embed = self.obj_encoder(data)
+    state = {}
+    subj_post, subj_prior = self.subj_rssm.observe(subj_embed, data['action'], state.get('subj_layer'))
+    subj_kl_loss, subj_kl_value = self.subj_rssm.kl_loss(subj_post, subj_prior, **self.config.kl)
+    # objective layer "action"
+    subj_actions = self.objective_input(subj_post)
+    # note that here subj actions are shifted by 1 action
+    obj_post, obj_prior = self.obj_rssm.observe(obj_embed, subj_actions, state.get('obj_layer'))
+    obj_kl_loss, obj_kl_value = self.obj_rssm.kl_loss(obj_post, obj_prior, **self.config.kl)
+    # stoch deter (mean std)/(logit)
+    
+    # assert len(kl_loss.shape) == 0
     likes = {}
-    losses = {'kl': kl_loss}
-    feat = self.rssm.get_feat(post)
+    losses = {'obj_kl': obj_kl_loss, 'subj_kl': subj_kl_loss}
+    subj_feat = self.subj_rssm.get_feat(subj_post)
+    obj_feat = self.obj_rssm.get_feat(obj_post)
+    feat = tf.concat([subj_feat, obj_feat], -1)
     for name, head in self.heads.items():
       grad_head = (name in self.config.grad_heads)
       inp = feat if grad_head else tf.stop_gradient(feat)
@@ -159,30 +189,45 @@ class WorldModel(common.Module):
     model_loss = sum(
         self.config.loss_scales.get(k, 1.0) * v for k, v in losses.items())
     outs = dict(
-        embed=embed, feat=feat, post=post,
-        prior=prior, likes=likes, kl=kl_value)
+        subj_embed=subj_embed, obj_embed=obj_embed, feat=feat, subj_post=subj_post,
+        subj_prior=subj_prior, obj_post=obj_post, 
+        obj_prior=obj_prior,
+        likes=likes, obj_kl=obj_kl_value, subj_kl=subj_kl_value)
     metrics = {f'{name}_loss': value for name, value in losses.items()}
-    metrics['model_kl'] = kl_value.mean()
-    metrics['prior_ent'] = self.rssm.get_dist(prior).entropy().mean()
-    metrics['post_ent'] = self.rssm.get_dist(post).entropy().mean()
-    return model_loss, post, outs, metrics
+    metrics['model_subj_kl'] = subj_kl_value.mean()
+    metrics['model_obj_kl'] = obj_kl_value.mean()
+    metrics['prior_subj_ent'] = self.subj_rssm.get_dist(subj_prior).entropy().mean()
+    metrics['post_subj_ent'] = self.subj_rssm.get_dist(subj_post).entropy().mean()
+    metrics['prior_obj_ent'] = self.obj_rssm.get_dist(obj_prior).entropy().mean()
+    metrics['post_obj_ent'] = self.obj_rssm.get_dist(obj_post).entropy().mean()
+    state = {'obj_layer': obj_post, 'subj_layer': subj_post}
+    return model_loss, state, outs, metrics
 
   def imagine(self, policy, start, horizon):
     print('calling wm imagine')
     flatten = lambda x: x.reshape([-1] + list(x.shape[2:]))
-    start = {k: flatten(v) for k, v in start.items()}
+    # start = {k: flatten(v) for k, v in start.items()}
+    start = tf.nest.map_structure(flatten, start)
     def step(prev, _):
       state, _, _ = prev
-      feat = self.rssm.get_feat(state)
-      action = policy(tf.stop_gradient(feat)).sample()
-      succ = self.rssm.img_step(state, action)
+      subj_feat = self.subj_rssm.get_feat(state['subj_layer'])
+      obj_feat = self.obj_rssm.get_feat(state['subj_layer'])
+      feat = tf.stop_gradient(tf.concat([subj_feat, obj_feat], 1))
+      action = policy(feat).sample()
+      subj_succ = self.subj_rssm.img_step(state['subj_layer'], action)
+      subj_action = self.objective_input(subj_succ)
+      obj_succ = self.obj_rssm.img_step(state['obj_layer'], subj_action)
+      succ = {'subj_layer': subj_succ, 'obj_layer': obj_succ}
       return succ, feat, action
-    feat = 0 * self.rssm.get_feat(start)
+    subj_feat = self.subj_rssm.get_feat(start['subj_layer'])
+    obj_feat = self.obj_rssm.get_feat(start['subj_layer'])
+    feat = 0 * tf.stop_gradient(tf.concat([subj_feat, obj_feat], 1))
     action = policy(feat).mode()
     succs, feats, actions = common.static_scan(
         step, tf.range(horizon), (start, feat, action))
-    states = {k: tf.concat([
-        start[k][None], v[:-1]], 0) for k, v in succs.items()}
+    states = succs
+    # states = {k: tf.concat([
+    #     start[k][None], v[:-1]], 0) for k, v in succs.items()}
     if 'discount' in self.heads:
       discount = self.heads['discount'](feats).mean()
     else:
@@ -195,6 +240,12 @@ class WorldModel(common.Module):
     obs = obs.copy()
     # second preprocessing for multitask ???
     obs['image'] = tf.cast(obs['image'], dtype) / 255.0 - 0.5
+    obs['segmentation'] = obs['image'] * 0. + 1.
+    if 'segmentation' in obs:
+      subject = tf.cast(obs['segmentation'] == 1., dtype)
+      obj = tf.cast(obs['segmentation'] == 2., dtype)
+      obs['subj_image'] = subject * obs['image']
+      obs['obj_image'] = obj * obs['image']
     obs['reward'] = getattr(tf, self.config.clip_rewards)(obs['reward'])
     if 'discount' in obs:
       obs['discount'] *= self.config.discount
@@ -204,13 +255,25 @@ class WorldModel(common.Module):
   def video_pred(self, data):
     data = self.preprocess(data)
     truth = data['image'][:6] + 0.5
-    embed = self.encoder(data)
-    states, _ = self.rssm.observe(embed[:6, :5], data['action'][:6, :5])
-    recon = self.heads['image'](
-        self.rssm.get_feat(states)).mode()[:6]
-    init = {k: v[:, -1] for k, v in states.items()}
-    prior = self.rssm.imagine(data['action'][:6, 5:], init)
-    openl = self.heads['image'](self.rssm.get_feat(prior)).mode()
+    subj_embed = self.subj_encoder(data)
+    obj_embed = self.obj_encoder(data)
+    subj_states, _ = self.subj_rssm.observe(subj_embed[:6, :5], data['action'][:6, :5])
+    subj_actions = self.objective_input(subj_states)
+    obj_states, _ = self.obj_rssm.observe(obj_embed[:6, :5], subj_actions)
+    subj_feat = self.subj_rssm.get_feat(subj_states)
+    obj_feat = self.obj_rssm.get_feat(obj_states)
+    feat = tf.concat([subj_feat, obj_feat], -1)
+    recon = self.heads['image'](feat).mode()[:6]
+    subj_init = {k: v[:, -1] for k, v in subj_states.items()}
+    obj_init = {k: v[:, -1] for k, v in obj_states.items()}
+    init = {'subj_layer': subj_init, 'obj_init': obj_init}
+    subj_prior = self.subj_rssm.imagine(data['action'][:6, 5:], subj_init)
+    subj_action = self.objective_input(subj_prior)
+    obj_prior = self.obj_rssm.imagine(subj_action, obj_init)
+    subj_feat = self.subj_rssm.get_feat(subj_prior)
+    obj_feat = self.obj_rssm.get_feat(obj_prior)
+    feat = tf.concat([subj_feat, obj_feat], -1)
+    openl = self.heads['image'](feat).mode()
     model = tf.concat([recon[:, :5] + 0.5, openl + 0.5], 1)
     error = (model - truth + 1) / 2
     _, _, h, w, _ = model.shape

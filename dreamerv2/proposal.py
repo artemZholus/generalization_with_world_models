@@ -33,7 +33,7 @@ class TrainProposal:
       return _, mets
     
     def propose_batch(self, agnt, metrics):
-      return next(self.dataset), True
+      return next(self.dataset), True, True
 
     def before_train(self):
       pass

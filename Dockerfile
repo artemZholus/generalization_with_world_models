@@ -28,6 +28,10 @@ FROM tensorflow/tensorflow:2.4.2-gpu
 RUN apt-get update && apt-get install -y \
   ffmpeg \
   libgl1-mesa-dev \
+  libosmesa6-dev \
+  libgl1-mesa-glx \
+  libglfw3 \
+  patchelf \
   python3-pip \
   unrar \
   wget \
@@ -40,13 +44,24 @@ ENV MUJOCO_GL egl
 RUN mkdir -p /root/.mujoco && \
   wget -nv https://www.roboti.us/download/mujoco200_linux.zip -O mujoco.zip && \
   unzip mujoco.zip -d /root/.mujoco && \
+  cp -r /root/.mujoco/mujoco200_linux /root/.mujoco/mujoco200 && \
   rm mujoco.zip
+
+# MuJoCo key.
+ARG MUJOCO_KEY=""
+RUN echo "$MUJOCO_KEY" > /root/.mujoco/mjkey.txt
+RUN cat /root/.mujoco/mjkey.txt
+
+ENV LD_LIBRARY_PATH="$LD_LIBRARY_PATH:/root/.mujoco/mujoco200/bin"
 
 # Python packages.
 RUN pip3 install --no-cache-dir \
   'gym[atari]' \
+  atari_py \
+  mujoco_py \
   elements \
   dm_control \
+  jupyterlab \
   ruamel.yaml \
   tensorflow_probability==0.12.2 \
   wandb
@@ -58,10 +73,6 @@ RUN wget -L -nv http://www.atarimania.com/roms/Roms.rar && \
   python3 -m atari_py.import_roms ROMS && \
   rm -rf Roms.rar ROMS.zip ROMS
 
-# MuJoCo key.
-ARG MUJOCO_KEY=""
-RUN echo "$MUJOCO_KEY" > /root/.mujoco/mjkey.txt
-RUN cat /root/.mujoco/mjkey.txt
 
 # DreamerV2.
 ENV TF_XLA_FLAGS --tf_xla_auto_jit=2
