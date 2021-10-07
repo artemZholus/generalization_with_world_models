@@ -34,7 +34,7 @@ class TrainProposal:
         task_zs_batch = next(self.dataset)
         with self.timed.action('train_zs_agent'):
           _, zs_agent_mets = agnt.train(task_zs_batch, None, False, False, True)
-      metrics.update(zs_agent_mets)
+        metrics.update(zs_agent_mets)
       return _, metrics
     
     def propose_batch(self, agnt, metrics):

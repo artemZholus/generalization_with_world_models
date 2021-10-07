@@ -85,6 +85,8 @@ else:
   mt_replay = None
 if config.zero_shot:
   zs_eval_replay = common.Replay(logdir / 'zs_eval_replay', config.time_limit or 1, **config.replay)
+else:
+  zs_eval_replay = None
 step = elements.Counter(train_replay.total_steps)
 outputs = [
     elements.TerminalOutput(),
@@ -168,15 +170,16 @@ def per_episode(ep, mode):
 print('Create envs.')
 train_envs = [make_env('train') for _ in range(config.num_envs)]
 eval_envs = [make_env('eval') for _ in range(config.num_envs)]
-zs_eval_envs = [make_env('zs_eval') for _ in range(config.num_envs)]
 action_space = train_envs[0].action_space['action']
 train_driver = common.Driver(train_envs)
 train_driver.on_episode(lambda ep: per_episode(ep, mode='train'))
 train_driver.on_step(lambda _: step.increment())
 eval_driver = common.Driver(eval_envs)
 eval_driver.on_episode(lambda ep: per_episode(ep, mode='eval'))
-zs_eval_driver = common.Driver(zs_eval_envs)
-zs_eval_driver.on_episode(lambda ep: per_episode(ep, mode='zs_eval'))
+if config.zero_shot:
+  zs_eval_envs = [make_env('zs_eval') for _ in range(config.num_envs)]
+  zs_eval_driver = common.Driver(zs_eval_envs)
+  zs_eval_driver.on_episode(lambda ep: per_episode(ep, mode='zs_eval'))
 
 prefill = max(0, config.prefill - train_replay.total_steps)
 if prefill:
@@ -184,15 +187,18 @@ if prefill:
   random_agent = common.RandomAgent(action_space)
   train_driver(random_agent, steps=prefill, episodes=1)
   eval_driver(random_agent, episodes=1)
-  zs_eval_driver(random_agent, episodes=1)
+  
   train_driver.reset()
   eval_driver.reset()
-  zs_eval_driver.reset()
+  if config.zero_shot:
+    zs_eval_driver(random_agent, episodes=1)
+    zs_eval_driver.reset()
 
 print('Create agent.')
 train_dataset = iter(train_replay.dataset(**config.dataset))
 eval_dataset = iter(eval_replay.dataset(**config.dataset))
-zs_eval_dataset = iter(zs_eval_replay.dataset(**config.dataset))
+if config.zero_shot:
+  zs_eval_dataset = iter(zs_eval_replay.dataset(**config.dataset))
 if config.embeddings.trainer.mode == 'sa_dyne':
   path = pathlib.Path(config.embeddings.data_path).expanduser()
   dyne_dataset = iter(common.Replay(path).dataset(length=config.embeddings.traj_len,
