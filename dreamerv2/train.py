@@ -154,6 +154,15 @@ def per_episode(ep, mode):
       video = np.concatenate(videos, 3)
       if config.logging.wdb:
         wandb.log({f"{mode}_policy": wandb.Video(video, fps=30, format="gif")})
+      video = np.transpose(ep['segmentation'], (0, 3, 1, 2)).astype(np.float)
+      video *= 100
+      videos = []
+      rows = video.shape[1]
+      for row in range(rows):
+        videos.append(video[:, row: row + 1])
+      video = np.concatenate(videos, 3)
+      if config.logging.wdb:
+        wandb.log({f"{mode}_segm_policy": wandb.Video(video, fps=30, format="gif")})  
   logger.write()
 
 print('Create envs.')

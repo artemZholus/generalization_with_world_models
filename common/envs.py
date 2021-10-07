@@ -149,7 +149,7 @@ class DMC:
 class MetaWorld:
 
   def __init__(self, name, action_repeat=1, size=(64, 64), 
-      randomize_tasks=False, offscreen=True, cameras=None, segmentation=False
+      randomize_tasks=False, offscreen=True, cameras=None, segmentation=True
     ):
     """
     Args: 
@@ -297,17 +297,17 @@ class MetaWorld:
     site_mask = segm[..., 0] == 6
 
     for geom in MTW_GEOMS_MAP[self.task]:
-      geom_id = self._env.geom_name2id(geom)
+      geom_id = self._env.model.geom_name2id(geom)
       obj_mask += ( (segm[..., 1] == geom_id) * geom_mask )
     for geom in MTW_GEOMS_MAP['robot_body']:
-      geom_id = self._env.geom_name2id(geom)
+      geom_id = self._env.model.geom_name2id(geom)
       subj_mask += ( (segm[..., 1] == geom_id) * geom_mask )
     
     for site in MTW_SITE_MAP[self.task]:
-      site_id = self._env.site_name2id(site)
+      site_id = self._env.model.site_name2id(site)
       obj_mask += ( (segm[..., 1] == site_id) * site_mask )
     for site in MTW_SITE_MAP['robot_body']:
-      site_id = self._env.site_name2id(site)
+      site_id = self._env.model.site_name2id(site)
       subj_mask += ( (segm[..., 1] == site_id) * site_mask )
     
     res[subj_mask] = 1
