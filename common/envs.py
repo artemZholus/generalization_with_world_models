@@ -3,8 +3,88 @@ import threading
 
 import gym
 import numpy as np
+from tensorflow.python.types.core import Value
 
 
+MTW_GEOMS_MAP = {
+  'button-press': [
+    'g_buttonbox_base_stopbot', 'g_buttonbox_base_stopbuttonrim', 'g_buttonbox_base_stoptop',
+    'g_buttonbox_base_col1', 'g_buttonbox_base_col2', 'g_buttonbox_base_col3', 'g_buttonbox_base_col4',
+    'g_button_stopbutton', 'g_button_stopbuttonrod', 'g_button_cylinder1',
+    'g_button_cylinder2', 'g_button_cylinder2', 'g_button_cylinder3'
+  ],
+  'door-open': [
+    'g_doorlockB_safe', 'g_doorlockB_box1', 'g_doorlockB_box2',
+    'g_doorlockB_box3', 'g_doorlockB_box4', 'g_doorlockB_box5',
+    'g_door_link1', 'handle', 'g_door_link2', 'g_door_link3',
+    'g_door_link4', 'g_dl_col1', 'g_dl_col2', 'g_dl_col3', 'g_dl_col4' 
+  ],
+  'drawer-close': [
+    'g_drawercase_base', 'g_drawercase_col1', 'g_drawercase_col2', 
+    'g_drawercase_col3', 'g_drawercase_col4', 'g_drawercase_col5',
+    'g_drawer_beige', 'objGeom', 'g_drawer_col1', 'g_drawer_col2', 
+    'g_drawer_col3', 'g_drawer_col4', 'g_drawer_col5', 
+    'g_drawer_col6', 'g_drawer_col7', 'g_drawer_col8',  
+  ],
+  'drawer-open': [
+    'g_drawercase_base', 'g_drawercase_col1', 'g_drawercase_col2', 
+    'g_drawercase_col3', 'g_drawercase_col4', 'g_drawercase_col5',
+    'g_drawer_beige', 'objGeom', 'g_drawer_col1', 'g_drawer_col2', 
+    'g_drawer_col3', 'g_drawer_col4', 'g_drawer_col5', 
+    'g_drawer_col6', 'g_drawer_col7', 'g_drawer_col8',  
+  ],
+  'peg-insert-side': [
+    'g_peg_block_red', 'g_peg_block_wood', 'g_peg_block_col1',
+    'g_peg_block_col2', 'g_peg_block_col3', 'g_peg_block_col4', 
+    'g_peg_block_col5', 'g_peg_block_col6', 'g_peg_block_col7',
+    'peg',  
+  ],
+  'window-open': [
+    'g_window_base_base', 'g_window_base_frame', 'g_window_base_col1', 
+    'g_window_base_col2', 'g_window_base_col3', 'g_window_base_col4', 'g_window_base_col5',
+    'g_window_a_white1', 'g_window_a_white2', 'g_window_a_white3', 'g_window_a_white4', 
+    'g_window_a_white5', 'g_window_a_frame', 'g_window_a_glass', 'g_window_a_col1', 
+    'g_window_a_col2', 'g_window_a_col3', 'g_window_a_col4', 'g_window_a_col5', 
+    'g_window_a_col6', 'g_window_a_col7', 'g_window_a_col8', 'g_window_a_col9', 
+    'g_window_a_col10', 'g_window_a_col11', 'g_window_b_red', 'g_window_b_glass',
+    'g_window_b_col1', 'g_window_b_col2', 'g_window_b_col3', 'g_window_b_col4', 
+    'g_window_b_col5', 'g_window_b_col6', 
+  ],
+  'window-close': [
+    'g_window_base_base', 'g_window_base_frame', 'g_window_base_col1', 
+    'g_window_base_col2', 'g_window_base_col3', 'g_window_base_col4', 'g_window_base_col5',
+    'g_window_a_white1', 'g_window_a_white2', 'g_window_a_white3', 'g_window_a_white4', 
+    'g_window_a_white5', 'g_window_a_frame', 'g_window_a_glass', 'g_window_a_col1', 
+    'g_window_a_col2', 'g_window_a_col3', 'g_window_a_col4', 'g_window_a_col5', 
+    'g_window_a_col6', 'g_window_a_col7', 'g_window_a_col8', 'g_window_a_col9', 
+    'g_window_a_col10', 'g_window_a_col11', 'g_window_b_red', 'g_window_b_glass',
+    'g_window_b_col1', 'g_window_b_col2', 'g_window_b_col3', 'g_window_b_col4', 
+    'g_window_b_col5', 'g_window_b_col6', 
+  ],
+  'reach': ['objGeom'],
+  'pick-place': ['objGeom'],
+  'push': ['objGeom'],
+  'robot_body': [
+    'g_torso', 'g_pedestal_mesh', 'g_right_arm_base_link_mesh', 
+    'g_right_l0', 'g_head', 'g_right_l1', 'g_right_l2', 'g_right_l3', 'g_right_l4', 
+    'g_right_l5', 'g_right_l6', 'g_right_hand_mesh', 'g_right_hand_cylinder', 'rail', 
+    'rightpad_geom', 'leftpad_geom'
+  ]
+}
+
+MTW_SITE_MAP = {
+  'button-press': ['buttonStart'],
+  'door-open': ['goal'],
+  'drawer-open': ['goal'],
+  'drawer-close': ['goal'],
+  'peg-insert-side': ['goal'],
+  'window-open': ['handleOpenStart', 'handleCloseStart', 'goal'],
+  'window-close': ['handleOpenStart', 'handleCloseStart', 'goal'],
+  'reach': ['goal'],
+  'push': ['goal'],
+  'pick-place': ['goal'],
+  'robot_body': ['leftEndEffector', 'rightEndEffector']
+}
 class DMC:
 
   def __init__(self, name, action_repeat=1, size=(64, 64), camera=None):
@@ -69,20 +149,24 @@ class DMC:
 class MetaWorld:
 
   def __init__(self, name, action_repeat=1, size=(64, 64), 
-      randomize_tasks=False, offscreen=True, cameras=None
+      randomize_tasks=False, offscreen=True, cameras=None, segmentation=False
     ):
     """
     Args: 
       cameras: "corner, corner2, corner3, topview, gripperPOV, behindGripper"
     """
+    if segmentation and not offscreen:
+      raise ValueError('Segmentation is supported only for offscreen.')
     if offscreen:
       os.environ['MUJOCO_GL'] = 'egl'
     else:
       os.environ['MUJOCO_GL'] = 'glfw'
     self.offscreen = offscreen
+    self.segmentation = segmentation
     self.randomize_tasks = randomize_tasks
     import metaworld
     domain, task = name.split('_', 1)
+    self.task = task
     if domain == 'ml10':
       dom = metaworld.ML10()
       self._env = dom.train_classes[f'{task}-v2']
@@ -170,6 +254,8 @@ class MetaWorld:
     obs = self.parse_obs(obs_vec)
 
     obs['image'] = self.render()
+    if self.segmentation:
+      obs['segmentation'] = self.render_segm()
     # info = {'discount': np.array(time_step.discount, np.float32)}
     info['discount'] = np.array(1. if not done else 0., np.float32)
     return obs, reward, done, info
@@ -181,6 +267,8 @@ class MetaWorld:
     position = self._env.reset()
     obs = self.parse_obs(position)
     obs['image'] = self.render()
+    if self.segmentation:
+      obs['segmentation'] = self.render_segm()
     return obs
 
   def render(self, *args, **kwargs):
@@ -188,10 +276,45 @@ class MetaWorld:
       raise ValueError("Only render mode 'rgb_array' is supported.")
     images = []
     for cam in self._cameras:
-      img = self._env.render(self.offscreen, cam, resolution=self._size)
+      img = self._env.render(self.offscreen, cam, resolution=self._size, **kwargs)
       images.append(img)
     return np.concatenate(images, axis=2)
 
+  def render_segm(self):
+    masks = []
+    for cam in self._cameras:
+      raw_mask = self._env.render(self.offscreen, cam, resolution=self._size, segmentation=True)
+      mask = self.segm2mask(raw_mask)
+      masks.append(mask)
+    return np.stack(masks, axis=2)
+
+
+  def segm2mask(self, segm):
+    res = np.zeros_like(segm[...,0])
+    subj_mask = np.zeros_like(res, dtype=np.bool)
+    obj_mask = np.zeros_like(res, dtype=np.bool)
+    geom_mask = segm[..., 0] == 5
+    site_mask = segm[..., 0] == 6
+
+    for geom in MTW_GEOMS_MAP[self.task]:
+      geom_id = self._env.geom_name2id(geom)
+      obj_mask += ( (segm[..., 1] == geom_id) * geom_mask )
+    for geom in MTW_GEOMS_MAP['robot_body']:
+      geom_id = self._env.geom_name2id(geom)
+      subj_mask += ( (segm[..., 1] == geom_id) * geom_mask )
+    
+    for site in MTW_SITE_MAP[self.task]:
+      site_id = self._env.site_name2id(site)
+      obj_mask += ( (segm[..., 1] == site_id) * site_mask )
+    for site in MTW_SITE_MAP['robot_body']:
+      site_id = self._env.site_name2id(site)
+      subj_mask += ( (segm[..., 1] == site_id) * site_mask )
+    
+    res[subj_mask] = 1
+    res[obj_mask] = 2
+
+    return res
+    
 
 class Atari:
 
