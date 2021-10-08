@@ -211,8 +211,8 @@ class WorldModel(common.Module):
     def step(prev, _):
       state, _, _ = prev
       subj_feat = self.subj_rssm.get_feat(state['subj_layer'])
-      obj_feat = self.obj_rssm.get_feat(state['subj_layer'])
-      feat = tf.stop_gradient(tf.concat([subj_feat, obj_feat], 1))
+      obj_feat = self.obj_rssm.get_feat(state['obj_layer'])
+      feat = tf.concat([subj_feat, obj_feat], 1)
       action = policy(feat).sample()
       subj_succ = self.subj_rssm.img_step(state['subj_layer'], action)
       subj_action = self.objective_input(subj_succ)
@@ -220,8 +220,8 @@ class WorldModel(common.Module):
       succ = {'subj_layer': subj_succ, 'obj_layer': obj_succ}
       return succ, feat, action
     subj_feat = self.subj_rssm.get_feat(start['subj_layer'])
-    obj_feat = self.obj_rssm.get_feat(start['subj_layer'])
-    feat = 0 * tf.stop_gradient(tf.concat([subj_feat, obj_feat], 1))
+    obj_feat = self.obj_rssm.get_feat(start['obj_layer'])
+    feat = 0 * tf.concat([subj_feat, obj_feat], 1)
     action = policy(feat).mode()
     succs, feats, actions = common.static_scan(
         step, tf.range(horizon), (start, feat, action))
@@ -240,12 +240,17 @@ class WorldModel(common.Module):
     obs = obs.copy()
     # second preprocessing for multitask ???
     obs['image'] = tf.cast(obs['image'], dtype) / 255.0 - 0.5
-    obs['segmentation'] = obs['image'] * 0. + 1.
+    # obs['segmentation'] = obs['image'] * 0. + 1.
     if 'segmentation' in obs:
-      subject = tf.cast(obs['segmentation'] == 1., dtype)
-      obj = tf.cast(obs['segmentation'] == 2., dtype)
-      obs['subj_image'] = subject * obs['image']
-      obs['obj_image'] = obj * obs['image']
+      # doesn't work when grayscale!
+      img_depth = 1 if self.config.grayscale else 3
+      n_cams = obs['image'].shape[-1] // img_depth
+      repeats = [img_depth] * n_cams
+
+      subject = tf.cast(obs['segmentation'] == 1, dtype)
+      obj = tf.cast(obs['segmentation'] == 2, dtype)
+      obs['subj_image'] = tf.repeat(subject, repeats=repeats, axis=-1) * obs['image']
+      obs['obj_image'] = tf.repeat(obj, repeats=repeats, axis=-1) * obs['image']
     obs['reward'] = getattr(tf, self.config.clip_rewards)(obs['reward'])
     if 'discount' in obs:
       obs['discount'] *= self.config.discount
