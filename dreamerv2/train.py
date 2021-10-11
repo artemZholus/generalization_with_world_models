@@ -41,7 +41,7 @@ for name in parsed.configs:
 config = elements.FlagParser(config).parse(remaining)
 os.environ['CUDA_VISIBLE_DEVICES'] = str(config.gpu) #str(args.gpu)
 if config.logging.wdb:
-  wandb.init(project='python-tf_dreamer', config=common.flatten_conf(config), group=config.logging.exp_name, 
+  wandb.init(entity='cds-mipt', project='oc_mbrl', config=common.flatten_conf(config), group=config.logging.exp_name, 
              name=config.logging.run_name, settings=wandb.Settings(start_method='thread'))
 if '$' in config.logdir:
   config = config.update({
