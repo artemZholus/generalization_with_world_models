@@ -144,7 +144,7 @@ def per_episode(ep, mode):
   logger.scalar(f'{mode}_length', length)
   logger.scalar(f'{mode}_eps', replay_.num_episodes)
   prefix = 'eval' if mode == 'eval' else ''
-  if task_name is not None:
+  if task_name is not None and mode == 'eval':
     task_name = task_name[:-len('-v2')]
     prefix = f'{prefix}_{task_name}'
   summ = {
