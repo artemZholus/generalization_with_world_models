@@ -5,6 +5,7 @@ import os
 import pathlib
 import sys
 import warnings
+from functools import partial
 import wandb
 
 try:
@@ -99,7 +100,7 @@ should_video_eval = elements.Every(config.eval_every)
 should_wdb_video = elements.Every(config.eval_every * 5)
 should_openl_video = elements.Every(config.eval_every * 5)
 
-def make_env(mode):
+def make_env(config, mode, **kws):
   suite, task = config.task.split('_', 1)
   if suite == 'dmc':
     env = common.DMC(task, config.action_repeat, config.image_size)
@@ -110,7 +111,12 @@ def make_env(mode):
         life_done=False, sticky_actions=True, all_actions=True)
     env = common.OneHotAction(env)
   elif suite == 'metaworld':
+    if mode != 'eval':
+      # in eval we freeze each worker to have a fixed env type
+      if 'worker_id' in kws:
+        del kws['worker_id']
     params = yaml.safe_load(config.env_params)
+    params.update(kws)
     env = common.MetaWorld(task, config.action_repeat, config.image_size, **params)
     env.dump_tasks(str(logdir / 'tasks.pkl'))
     env = common.NormalizeAction(env)
@@ -123,6 +129,9 @@ def make_env(mode):
 
 def per_episode(ep, mode):
   length = len(ep['reward']) - 1
+  task_name = None
+  if 'task_name' in ep:
+    task_name = ep['task_name'][0]
   score = float(ep['reward'].astype(np.float64).sum())
   print(f'{mode.title()} episode has {length} steps and return {score:.1f}.')
   replay_ = dict(train=train_replay, eval=eval_replay)[mode]
@@ -134,11 +143,15 @@ def per_episode(ep, mode):
   logger.scalar(f'{mode}_return', score)
   logger.scalar(f'{mode}_length', length)
   logger.scalar(f'{mode}_eps', replay_.num_episodes)
-  prefix = 'eval/' if mode == 'eval' else ''
+  prefix = 'eval' if mode == 'eval' else ''
+  if task_name is not None:
+    task_name = task_name[:-len('-v2')]
+    prefix = f'{prefix}_{task_name}'
   summ = {
-    f'{prefix}{config.logging.env_name}/return': score,
-    f'{prefix}env_step': replay_.num_transitions,
-    f'{prefix}{config.logging.env_name}/length': length
+    f'{config.logging.env_name}/{prefix}_return': score,
+    f'train_env_step': train_replay.num_transitions,
+    f'eval_env_step': eval_replay.num_transitions,
+    f'{config.logging.env_name}/{prefix}_length': length
   }
   if config.logging.wdb:
     wandb.log(summ)
@@ -166,13 +179,22 @@ def per_episode(ep, mode):
   logger.write()
 
 print('Create envs.')
-train_envs = [make_env('train') for _ in range(config.num_envs)]
-eval_envs = [make_env('eval') for _ in range(config.num_envs)]
-action_space = train_envs[0].action_space['action']
-train_driver = common.Driver(train_envs)
+# train_envs = [make_env(config, 'train') for _ in range(config.num_envs)]
+# eval_envs = [make_env(config, 'eval') for _ in range(config.num_envs)]
+dummy_env = make_env(config, 'train')
+action_space = dummy_env.action_space['action']
+parallel = 'process' if config.parallel else 'local'
+train_driver = common.Driver(
+  partial(make_env, config, 'train'), num_envs=config.num_envs, 
+  mode=parallel, lock=config.num_envs > 1)
 train_driver.on_episode(lambda ep: per_episode(ep, mode='train'))
 train_driver.on_step(lambda _: step.increment())
-eval_driver = common.Driver(eval_envs)
+syncfile = None
+if 'metaworld' in config.task:
+  syncfile = train_driver._envs[0].syncfile
+eval_driver = common.Driver(
+  partial(make_env, config, 'eval'), num_envs=config.num_envs, 
+  mode=parallel, lock=config.num_envs > 1, lockfile=syncfile)
 eval_driver.on_episode(lambda ep: per_episode(ep, mode='eval'))
 
 prefill = max(0, config.prefill - train_replay.total_steps)

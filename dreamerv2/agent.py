@@ -213,7 +213,7 @@ class WorldModel(common.Module):
       subj_feat = self.subj_rssm.get_feat(state['subj_layer'])
       obj_feat = self.obj_rssm.get_feat(state['obj_layer'])
       feat = tf.concat([subj_feat, obj_feat], 1)
-      action = policy(feat).sample()
+      action = policy(tf.stop_gradient(feat)).sample()
       subj_succ = self.subj_rssm.img_step(state['subj_layer'], action)
       subj_action = self.objective_input(subj_succ)
       obj_succ = self.obj_rssm.img_step(state['obj_layer'], subj_action)

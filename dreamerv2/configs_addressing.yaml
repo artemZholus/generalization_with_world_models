@@ -7,6 +7,7 @@ defaults:
   task: dmc_walker_walk
   env_params: ''
   num_envs: 1
+  parallel: False
   steps: 4e6
   eval_every: 1e5
   eval_eps: 1
@@ -287,6 +288,19 @@ ml1:
   logging.env_name: ml1
   logdir: $DATA/tmp_noroot/{run_id}
   steps: 1e6
+
+mt10:
+  logging.exp_name: mt10
+  logging.env_name: mt10
+  task: metaworld_mt10_all
+  logdir: $DATA/tmp_noroot/{run_id}
+  steps: 1e8
+  eval_eps: 10
+  num_envs: 10
+  parallel: True
+  train_every: 10
+  train_steps: 2
+  env_params: "{cameras: [corner, corner3], offscreen: True, randomize_tasks: False}"
 
 dmc:
 
