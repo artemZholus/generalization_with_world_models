@@ -147,6 +147,79 @@ class RSSM(common.Module):
       loss = mix * loss_lhs + (1 - mix) * loss_rhs
     return loss, value
 
+class DualRSSM(common.Module):
+
+  def __init__(self, subj_config, obj_config):
+    super().__init__()
+    self.subj_rssm = RSSM(**subj_config)
+    self.obj_rssm = RSSM(**obj_config)
+    self._cast = lambda x: tf.cast(x, prec.global_policy().compute_dtype)
+    self._dtype = prec.global_policy().compute_dtype
+
+  def initial(self, batch_size):
+    subj_state = self.subj_rssm.initial(batch_size)
+    obj_state = self.obj_rssm.initial(batch_size)
+    state = {'subj': subj_state, 'obj': obj_state}
+    return state
+
+  def objective_input(self, subjective_post):
+    feat = self.subj_rssm.get_feat(subjective_post)
+    return tf.stop_gradient(feat)
+
+  @tf.function
+  def observe(self, embed, action, state=None):
+    if state is None:
+      state = self.initial(tf.shape(action)[0])
+    subj_post, subj_prior = self.subj_rssm.observe(embed['subj'], action, state['subj'])
+    subj_actions = self.objective_input(subj_post)
+    obj_post, obj_prior = self.obj_rssm.observe(embed['obj'], subj_actions, state['obj'])
+    post = {'subj': subj_post, 'obj': obj_post}
+    prior = {'subj': subj_prior, 'obj': obj_prior}
+    return post, prior
+
+  @tf.function
+  def imagine(self, action, state=None):
+    if state is None:
+      state = self.initial(tf.shape(action)[0])
+    assert isinstance(state, dict), state
+    subj_prior = self.subj_rssm.imagine(action, state['subj'])
+    subj_action = self.objective_input(subj_prior)
+    obj_prior = self.obj_rssm.imagine(subj_action, state['obj'])
+    return {'subj': subj_prior, 'obj': obj_prior}
+
+  def get_feat(self, state):
+    subj_feat = self.subj_rssm.get_feat(state['subj'])
+    obj_feat = self.obj_rssm.get_feat(state['obj'])
+    return tf.concat([subj_feat, obj_feat], -1)
+
+  def get_dist(self, state):
+    subj_dist = self.subj_rssm.get_dist(state['subj'])
+    obj_dist = self.obj_rssm.get_dist(state['obj'])
+    return {'subj': subj_dist, 'obj': obj_dist}
+
+  @tf.function
+  def obs_step(self, prev_state, prev_action, embed, sample=True):
+    subj_post, subj_prior = self.subj_rssm.obs_step(prev_state['subj'], prev_action, embed['subj'], sample)
+    subj_action = self.objective_input(subj_post)
+    obj_post, obj_prior = self.obj_rssm.obs_step(prev_state['obj'], subj_action, embed['obj'], sample)
+    post = {'subj': subj_post, 'obj': obj_post}
+    prior = {'subj': subj_prior, 'obj': obj_prior}
+    return post, prior
+
+  @tf.function
+  def img_step(self, prev_state, prev_action, sample=True):
+    subj_prior = self.subj_rssm.img_step(prev_state['subj'], prev_action, sample)
+    subj_action = self.objective_input(subj_prior)
+    obj_prior = self.obj_rssm.img_step(prev_state['obj'], subj_action, sample)
+    prior = {'subj': subj_prior, 'obj': obj_prior}
+    return prior
+
+  def kl_loss(self, post, prior, **kwargs):
+    subj_loss, subj_value = self.subj_rssm.kl_loss(post['subj'], prior['subj'], **kwargs)
+    obj_loss, obj_value = self.obj_rssm.kl_loss(post['obj'], prior['obj'], **kwargs)
+    loss = {'subj': subj_loss, 'obj': obj_loss}
+    value = {'subj': subj_value, 'obj': obj_value}
+    return loss, value
 
 class ConvEncoder(common.Module):
 
@@ -206,6 +279,21 @@ class ConvEncoder(common.Module):
         else:
           raise NotImplementedError((key, value.dtype, value.shape))
       return tf.concat(features, -1)
+
+
+class DualConvEncoder(common.Module):
+
+  def __init__(self, subj_config, obj_config):
+    super().__init__()
+    self.subj_encoder = ConvEncoder(**subj_config)
+    self.obj_encoder = ConvEncoder(**obj_config)
+
+  @tf.function
+  def __call__(self, obs):
+    subj_embed = self.subj_encoder(obs)
+    obj_embed = self.obj_encoder(obs)
+    embed = {'subj': subj_embed, 'obj': obj_embed}
+    return embed
 
 
 class ConvDecoder(common.Module):
