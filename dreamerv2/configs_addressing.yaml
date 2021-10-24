@@ -42,17 +42,20 @@ defaults:
   zero_shot: False
   grad_heads: [image, reward, discount]
   rssm: {hidden: 400, deter: 400, stoch: 32, discrete: 32, act: elu, std_act: sigmoid2, min_std: 0.1}
-  subj_rssm: {hidden: 400, deter: 400, stoch: 32, discrete: 32, act: elu, std_act: sigmoid2, min_std: 0.1}
-  obj_rssm: {hidden: 400, deter: 400, stoch: 32, discrete: 32, act: elu, std_act: sigmoid2, min_std: 0.1}
   encoder: {depth: 48, act: elu, kernels: [4, 4, 4, 4], keys: [image], rect: False}
-  subj_encoder: {depth: 48, act: elu, kernels: [4, 4, 4, 4], keys: [subj_image], rect: False}
-  obj_encoder: {depth: 48, act: elu, kernels: [4, 4, 4, 4], keys: [obj_image], rect: False}
   decoder: {depth: 48, act: elu, kernels: [5, 5, 6, 6]}
   reward_head: {layers: 4, units: 400, act: elu, dist: mse}
   discount_head: {layers: 4, units: 400, act: elu, dist: binary}
   loss_scales: {kl: 1.0, reward: 1.0, discount: 1.0}
   kl: {free: 0.0, forward: False, balance: 0.8, free_avg: True}
   model_opt: {opt: adam, lr: 3e-4, eps: 1e-5, clip: 100, wd: 1e-6}
+
+  # Obj-Subj World Model
+  subj_strategy: 'instant'
+  subj_rssm: {hidden: 400, deter: 400, stoch: 32, discrete: 32, act: elu, std_act: sigmoid2, min_std: 0.1}
+  obj_rssm: {hidden: 400, deter: 400, stoch: 32, discrete: 32, act: elu, std_act: sigmoid2, min_std: 0.1}
+  subj_encoder: {depth: 48, act: elu, kernels: [4, 4, 4, 4], keys: [subj_image], rect: False}
+  obj_encoder: {depth: 48, act: elu, kernels: [4, 4, 4, 4], keys: [obj_image], rect: False}
 
   # Actor Critic
   actor: {layers: 4, units: 400, act: elu, dist: trunc_normal, min_std: 0.1}
@@ -137,6 +140,23 @@ defaults:
     run_name: none
     exp_name: none
     env_name: none
+
+dual_v2:
+  world_model: dual
+  subj_rssm: {hidden: 200, deter: 200}
+  obj_rssm: {hidden: 200, deter: 200}
+  subj_strategy: 'instant'
+  subj_encoder: {depth: 48, act: elu, kernels: [4, 4, 4, 4], keys: [subj_image], rect: False}
+  obj_encoder: {depth: 48, act: elu, kernels: [4, 4, 4, 4], keys: [obj_image], rect: False}
+
+dual_v1:
+  world_model: dual
+  subj_rssm: {hidden: 200, deter: 200, stoch: 30, discrete: False, act: elu, std_act: sigmoid2, min_std: 0.1}
+  obj_rssm: {hidden: 200, deter: 200, stoch: 30, discrete: False, act: elu, std_act: sigmoid2, min_std: 0.1}
+  subj_strategy: 'instant'
+  subj_encoder: {depth: 32, act: relu, kernels: [4, 4, 4, 4], keys: [subj_image], rect: False}
+  obj_encoder: {depth: 32, act: relu, kernels: [4, 4, 4, 4], keys: [subj_image], rect: False}
+
 
 v1:
   train_every: 1000

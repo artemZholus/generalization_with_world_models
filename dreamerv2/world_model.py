@@ -138,7 +138,7 @@ class DualWorldModel(WorldModel):
 
   def __init__(self, step, config):
     super().__init__(step, config)
-    self.rssm = common.DualRSSM(config.subj_rssm, config.obj_rssm)
+    self.rssm = common.DualRSSM(config.subj_rssm, config.obj_rssm, config.subj_strategy)
     shape = config.image_size + (config.img_channels,)
     self.encoder = common.DualConvEncoder(config.subj_encoder, config.obj_encoder)
     self.heads['image'] = common.ConvDecoder(shape, **config.decoder)

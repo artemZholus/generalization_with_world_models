@@ -149,10 +149,11 @@ class RSSM(common.Module):
 
 class DualRSSM(common.Module):
 
-  def __init__(self, subj_config, obj_config):
+  def __init__(self, subj_config, obj_config, subj_strategy):
     super().__init__()
     self.subj_rssm = RSSM(**subj_config)
     self.obj_rssm = RSSM(**obj_config)
+    self.strategy = subj_strategy
     self._cast = lambda x: tf.cast(x, prec.global_policy().compute_dtype)
     self._dtype = prec.global_policy().compute_dtype
 
@@ -162,8 +163,39 @@ class DualRSSM(common.Module):
     state = {'subj': subj_state, 'obj': obj_state}
     return state
 
-  def objective_input(self, subjective_post):
-    feat = self.subj_rssm.get_feat(subjective_post)
+  def step_subj_action(self, prev_subj_states, curr_subj_states):
+    if self.strategy == 'instant':
+      feat = self.subj_rssm.get_feat(curr_subj_states)
+    elif self.strategy == 'reactive':
+      feat = self.subj_rssm.get_feat(prev_subj_states)
+    elif self.strategy == 'delta':
+      curr_feats = self.subj_rssm.get_feat(curr_subj_states)
+      prev_feats = self.subj_rssm.get_feat(prev_subj_states)
+      diff = lambda x, y: x - y 
+      feat = tf.nest.map_structure(diff, curr_feats, prev_feats)
+    return tf.stop_gradient(feat)
+
+  def subj_action(self, start_state, subj_states):
+    if self.strategy == 'instant':
+      feat = self.subj_rssm.get_feat(subj_states)
+    elif self.strategy == 'reactive':
+      complete_shapes = lambda x: tf.expand_dims(x, 1) if len(x.shape) < 3 else x
+      start_state = tf.nest.map_structure(complete_shapes, start_state)
+      states = {k: tf.concat([tf.cast(start_state[k], v.dtype), 
+                              subj_states[k][:, :-1]], 1) for k, v in subj_states.items()}
+      feat = self.subj_rssm.get_feat(states)
+    elif self.strategy == 'delta':
+      complete_shapes = lambda x: tf.expand_dims(x, 1) if len(x.shape) < 3 else x
+      start_state = tf.nest.map_structure(complete_shapes, start_state)
+      states = {k: tf.concat([tf.cast(start_state[k], v.dtype), 
+                              subj_states[k]], 1) for k, v in subj_states.items()}
+      feat = self.subj_rssm.get_feat(states)
+      diff = lambda x: x[:, 1:] - x[:, :-1]
+      feat = tf.nest.map_structure(diff, feat)
+    return tf.stop_gradient(feat)
+
+  def objective_input(self, subj_states):
+    feat = self.subj_rssm.get_feat(subj_states)
     return tf.stop_gradient(feat)
 
   @tf.function
@@ -171,7 +203,7 @@ class DualRSSM(common.Module):
     if state is None:
       state = self.initial(tf.shape(action)[0])
     subj_post, subj_prior = self.subj_rssm.observe(embed['subj'], action, state['subj'])
-    subj_actions = self.objective_input(subj_post)
+    subj_actions = self.subj_action(state['subj'], subj_post)
     obj_post, obj_prior = self.obj_rssm.observe(embed['obj'], subj_actions, state['obj'])
     post = {'subj': subj_post, 'obj': obj_post}
     prior = {'subj': subj_prior, 'obj': obj_prior}
@@ -183,7 +215,7 @@ class DualRSSM(common.Module):
       state = self.initial(tf.shape(action)[0])
     assert isinstance(state, dict), state
     subj_prior = self.subj_rssm.imagine(action, state['subj'])
-    subj_action = self.objective_input(subj_prior)
+    subj_action = self.subj_action(state['subj'], subj_prior)
     obj_prior = self.obj_rssm.imagine(subj_action, state['obj'])
     return {'subj': subj_prior, 'obj': obj_prior}
 
@@ -200,7 +232,7 @@ class DualRSSM(common.Module):
   @tf.function
   def obs_step(self, prev_state, prev_action, embed, sample=True):
     subj_post, subj_prior = self.subj_rssm.obs_step(prev_state['subj'], prev_action, embed['subj'], sample)
-    subj_action = self.objective_input(subj_post)
+    subj_action = self.step_subj_action(prev_state['subj'], subj_post)
     obj_post, obj_prior = self.obj_rssm.obs_step(prev_state['obj'], subj_action, embed['obj'], sample)
     post = {'subj': subj_post, 'obj': obj_post}
     prior = {'subj': subj_prior, 'obj': obj_prior}
@@ -209,7 +241,7 @@ class DualRSSM(common.Module):
   @tf.function
   def img_step(self, prev_state, prev_action, sample=True):
     subj_prior = self.subj_rssm.img_step(prev_state['subj'], prev_action, sample)
-    subj_action = self.objective_input(subj_prior)
+    subj_action = self.step_subj_action(prev_state['subj'], subj_prior)
     obj_prior = self.obj_rssm.img_step(prev_state['obj'], subj_action, sample)
     prior = {'subj': subj_prior, 'obj': obj_prior}
     return prior
