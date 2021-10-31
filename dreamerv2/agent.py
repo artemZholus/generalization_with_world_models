@@ -22,6 +22,7 @@ class Agent(common.Module):
     self._dataset = dataset
     self.wm = dict(
       dual=lambda: world_model.DualWorldModel(self.step, config),
+      mutual=lambda: world_model.MutualWorldModel(self.step, config),
       dreamer=lambda: world_model.DreamerWorldModel(self.step, config)
     )[config.world_model]()
     if config.zero_shot:

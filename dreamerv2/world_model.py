@@ -175,6 +175,46 @@ class DualWorldModel(WorldModel):
     return model_loss, post, outs, metrics
 
 
+class MutualWorldModel(WorldModel):
+
+  def __init__(self, step, config):
+    super().__init__(step, config)
+    self.rssm = common.MutualRSSM(config.subj_rssm, config.obj_rssm, config.subj_strategy)
+    shape = config.image_size + (config.img_channels,)
+    self.encoder = common.DualConvEncoder(config.subj_encoder, config.obj_encoder)
+    self.heads['image'] = common.ConvDecoder(shape, **config.decoder)
+    self.heads['reward'] = common.MLP([], **config.reward_head)
+    if config.pred_discount:
+      self.heads['discount'] = common.MLP([], **config.discount_head)
+    for name in config.grad_heads:
+      assert name in self.heads, name
+    self.modules = [
+      self.encoder, self.rssm,
+      *self.heads.values()]
+
+  def preprocess(self, obs):
+    obs = super().preprocess(obs)
+    img_depth = 1 if self.config.grayscale else 3
+    n_cams = obs['image'].shape[-1] // img_depth
+    repeats = [img_depth] * n_cams
+    subject = tf.cast(obs['segmentation'] == 1, self.dtype)
+    obj = tf.cast(obs['segmentation'] == 2, self.dtype)
+    obs['subj_image'] = tf.repeat(subject, repeats=repeats, axis=-1) * obs['image']
+    obs['obj_image'] = tf.repeat(obj, repeats=repeats, axis=-1) * obs['image']
+    return obs
+  
+  def loss(self, data, state=None):
+    model_loss, post, outs, metrics = super().loss(data, state)
+    metrics['model_subj_kl'] = outs['kl']['subj'].mean()
+    metrics['model_obj_kl'] = outs['kl']['obj'].mean()
+    prior_dist = self.rssm.get_dist(outs['prior'])
+    post_dist = self.rssm.get_dist(outs['post'])
+    metrics['prior_subj_ent'] = prior_dist['subj'].entropy().mean()
+    metrics['post_subj_ent'] = post_dist['subj'].entropy().mean()
+    metrics['prior_obj_ent'] = prior_dist['obj'].entropy().mean()
+    metrics['post_obj_ent'] = post_dist['obj'].entropy().mean()
+    return model_loss, post, outs, metrics
+
 class DreamerWorldModel(WorldModel):
 
   def __init__(self, step, config):
