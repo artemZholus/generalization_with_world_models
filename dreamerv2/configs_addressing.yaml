@@ -5,6 +5,9 @@ defaults:
   seed: 0
   gpu: 0
   task: dmc_walker_walk
+  train_tasks_file: none
+  test_tasks_file: none
+  randomize_tasks: false
   env_params: ''
   num_envs: 1
   parallel: False
@@ -313,6 +316,20 @@ ml1:
   logging.env_name: ml1
   logdir: $DATA/tmp_noroot/{run_id}
   steps: 1e6
+
+rotated_drawer_close:
+  logging.exp_name: ml1_rotated
+  img_channels: 3
+  env_params: "{cameras: [topview], offscreen: True, randomize_tasks: True}"
+  eval_eps: 10
+  num_envs: 10
+  parallel: true
+  train_every: 10
+  train_steps: 2
+  task: metaworld_ml1_drawer-close-rotated
+  train_tasks_file: ./rotated_drawer_tasks/close_monotonic_train
+  test_tasks_file: ./rotated_drawer_tasks/close_monotonic_test
+  randomize_tasks: true
 
 mt10:
   logging.exp_name: mt10

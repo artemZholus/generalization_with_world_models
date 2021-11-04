@@ -186,7 +186,8 @@ action_space = dummy_env.action_space['action']
 parallel = 'process' if config.parallel else 'local'
 train_driver = common.Driver(
   partial(make_env, config, 'train'), num_envs=config.num_envs, 
-  mode=parallel, lock=config.num_envs > 1)
+  mode=parallel, lock=config.num_envs > 1, lockfile=config.train_tasks_file,
+)
 train_driver.on_episode(lambda ep: per_episode(ep, mode='train'))
 train_driver.on_step(lambda _: step.increment())
 syncfile = None
@@ -194,7 +195,9 @@ if 'metaworld' in config.task:
   syncfile = train_driver._envs[0].syncfile
 eval_driver = common.Driver(
   partial(make_env, config, 'eval'), num_envs=config.num_envs, 
-  mode=parallel, lock=config.num_envs > 1, lockfile=syncfile)
+  mode=parallel, lock=config.num_envs > 1,
+  lockfile=syncfile if config.test_tasks_file is None else config.test_tasks_file,
+)
 eval_driver.on_episode(lambda ep: per_episode(ep, mode='eval'))
 
 prefill = max(0, config.prefill - train_replay.total_steps)

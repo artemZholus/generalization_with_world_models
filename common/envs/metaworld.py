@@ -7,6 +7,7 @@ import numpy as np
 import random
 from scipy.signal import convolve2d
 from filelock import FileLock
+from tensorflow.python.framework.op_def_registry import sync
 from tensorflow.python.types.core import Value
 
 
@@ -31,6 +32,20 @@ MTW_GEOMS_MAP = {
     'g_drawer_col6', 'g_drawer_col7', 'g_drawer_col8',  
   ],
   'drawer-open': [
+    'g_drawercase_base', 'g_drawercase_col1', 'g_drawercase_col2', 
+    'g_drawercase_col3', 'g_drawercase_col4', 'g_drawercase_col5',
+    'g_drawer_beige', 'objGeom', 'g_drawer_col1', 'g_drawer_col2', 
+    'g_drawer_col3', 'g_drawer_col4', 'g_drawer_col5', 
+    'g_drawer_col6', 'g_drawer_col7', 'g_drawer_col8',  
+  ],
+  'drawer-close-rotated': [
+    'g_drawercase_base', 'g_drawercase_col1', 'g_drawercase_col2', 
+    'g_drawercase_col3', 'g_drawercase_col4', 'g_drawercase_col5',
+    'g_drawer_beige', 'objGeom', 'g_drawer_col1', 'g_drawer_col2', 
+    'g_drawer_col3', 'g_drawer_col4', 'g_drawer_col5', 
+    'g_drawer_col6', 'g_drawer_col7', 'g_drawer_col8',  
+  ],
+  'drawer-open-rotated': [
     'g_drawercase_base', 'g_drawercase_col1', 'g_drawercase_col2', 
     'g_drawercase_col3', 'g_drawercase_col4', 'g_drawercase_col5',
     'g_drawer_beige', 'objGeom', 'g_drawer_col1', 'g_drawer_col2', 
@@ -81,6 +96,8 @@ MTW_SITE_MAP = {
   'door-open': ['goal'],
   'drawer-open': ['goal'],
   'drawer-close': ['goal'],
+  'drawer-open-rotated': ['goal'],
+  'drawer-close-rotated': ['goal'],
   'peg-insert-side': ['goal'],
   'window-open': ['handleOpenStart', 'handleCloseStart', 'goal'],
   'window-close': ['handleOpenStart', 'handleCloseStart', 'goal'],
@@ -102,7 +119,7 @@ class MetaWorld:
   def __init__(self, name, action_repeat=1, size=(64, 64), 
       randomize_env=True, randomize_tasks=False, offscreen=True, 
       cameras=None, segmentation=True, syncfile=None,
-      worker_id=None
+      worker_id=None, 
     ):
     """
     Args: 
@@ -145,10 +162,12 @@ class MetaWorld:
     if worker_id is None:
       self._curr_env = random.choice(list(self.envs_cls.keys()))
     else:
-      self._curr_env = list(self.envs_cls.keys())[worker_id]
+      env_keys = list(self.envs_cls.keys())
+      self._curr_env = env_keys[worker_id % len(env_keys)]
     self._env = self.envs_cls[self._curr_env]
     self._tasks = self.env_tasks[self._curr_env][0]
     self.syncfile = syncfile
+    print(f'sync file: {syncfile}')
     with NullContext() if syncfile is None else FileLock(syncfile):
       if syncfile is not None:
           path = f'{syncfile}.data'
@@ -248,10 +267,10 @@ class MetaWorld:
 
   def reset(self):
     if self.randomize_env:
-      if self.worker_id is None:
-        self._curr_env = random.choice(list(self.envs_cls.keys()))
-      else:
-        self._curr_env = list(self.envs_cls.keys())[self.worker_id]
+      self._curr_env = random.choice(list(self.envs_cls.keys()))
+    elif self.worker_id is not None:
+      env_keys = list(self.envs_cls.keys())
+      self._curr_env = env_keys[self.worker_id % len(env_keys)]
       self._env = self.envs_cls[self._curr_env]
       self._tasks = self.env_tasks[self._curr_env][0]
     if self.randomize_tasks:
