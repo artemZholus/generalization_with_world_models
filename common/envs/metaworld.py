@@ -271,8 +271,8 @@ class MetaWorld:
     elif self.worker_id is not None:
       env_keys = list(self.envs_cls.keys())
       self._curr_env = env_keys[self.worker_id % len(env_keys)]
-      self._env = self.envs_cls[self._curr_env]
-      self._tasks = self.env_tasks[self._curr_env][0]
+    self._env = self.envs_cls[self._curr_env]
+    self._tasks = self.env_tasks[self._curr_env][0]
     if self.randomize_tasks:
       # TODO: maybe add per-event random task sync. 
       # for now this is fine.

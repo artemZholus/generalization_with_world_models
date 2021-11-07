@@ -140,7 +140,7 @@ class Driver:
     self.mode = mode
     if lock:
       os.makedirs('/tmp/driver_lock', exist_ok=True)
-      if lockfile is None:  
+      if (lockfile is None) or (lockfile == 'none'):  
         lockfile_ = NamedTemporaryFile(dir='/tmp/driver_lock', delete=False)
         lockfile = lockfile_.name
         lockfile_.close()
