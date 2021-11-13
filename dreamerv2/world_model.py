@@ -75,6 +75,10 @@ class WorldModel(common.Module):
       action = policy(tf.stop_gradient(feat)).sample()
       succ = self.rssm.img_step(state, action)
       return succ, feat, action
+    if self.rssm.foresight and self.rssm.strategy == 'reactive':
+      goal_state = self.rssm.obj_rssm.img_step(
+        start['obj'], self.rssm.subj_rssm.get_feat(start['subj']), sample=True)
+      start['goal'] = goal_state
     feat = 0 * self.rssm.get_feat(start)
     action = policy(feat).mode()
     succs, feats, actions = common.static_scan(
@@ -138,7 +142,7 @@ class DualWorldModel(WorldModel):
 
   def __init__(self, step, config):
     super().__init__(step, config)
-    self.rssm = common.DualRSSM(config.subj_rssm, config.obj_rssm, config.subj_strategy)
+    self.rssm = common.DualRSSM(config.subj_rssm, config.obj_rssm, config.subj_strategy, config.foresight)
     shape = config.image_size + (config.img_channels,)
     self.encoder = common.DualConvEncoder(config.subj_encoder, config.obj_encoder)
     self.heads['image'] = common.ConvDecoder(shape, **config.decoder)

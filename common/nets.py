@@ -149,11 +149,12 @@ class RSSM(common.Module):
 
 class DualRSSM(common.Module):
 
-  def __init__(self, subj_config, obj_config, subj_strategy):
+  def __init__(self, subj_config, obj_config, subj_strategy, foresight):
     super().__init__()
     self.subj_rssm = RSSM(**subj_config)
     self.obj_rssm = RSSM(**obj_config)
     self.strategy = subj_strategy
+    self.foresight = foresight
     self._cast = lambda x: tf.cast(x, prec.global_policy().compute_dtype)
     self._dtype = prec.global_policy().compute_dtype
 
@@ -206,7 +207,19 @@ class DualRSSM(common.Module):
     obj_post, obj_prior = self.obj_rssm.observe(embed['obj'], subj_actions, state['obj'])
     post = {'subj': subj_post, 'obj': obj_post}
     prior = {'subj': subj_prior, 'obj': obj_prior}
+    if self.foresight and self.strategy == 'reactive':
+      goal_states = self.add_last_imag(subj_post, obj_post)
+      post['goal'] = goal_states
     return post, prior
+
+  def add_last_imag(self, subj, obj):
+    last_subj = {k: subj[k][:, -1] for k in subj.keys()} 
+    subj_action = self.subj_rssm.get_feat(last_subj)
+    last_obj = {k: obj[k][:, -1] for k in obj.keys()}
+    imag_obj = self.obj_rssm.img_step(last_obj, subj_action)
+    goal_states = {k: tf.concat(
+        [obj[k][:, 1:], tf.expand_dims(imag_obj[k], 1)], 1) for k in obj.keys()}
+    return goal_states
 
   @tf.function
   def imagine(self, action, state=None):
@@ -216,11 +229,21 @@ class DualRSSM(common.Module):
     subj_prior = self.subj_rssm.imagine(action, state['subj'])
     subj_action = self.subj_action(state['subj'], subj_prior)
     obj_prior = self.obj_rssm.imagine(subj_action, state['obj'])
-    return {'subj': subj_prior, 'obj': obj_prior}
+    prior = {'subj': subj_prior, 'obj': obj_prior}
+    if self.foresight and self.strategy == 'reactive':
+      goal_states = self.add_last_imag(subj_prior, obj_prior)
+      prior['goal'] = goal_states
+    return prior
 
   def get_feat(self, state):
     subj_feat = self.subj_rssm.get_feat(state['subj'])
     obj_feat = self.obj_rssm.get_feat(state['obj'])
+    if self.foresight and self.strategy == 'reactive' and 'goal' in state:
+      goal_feat = self.obj_rssm.get_feat(state['goal'])
+      # TODO: two options [subj_feat, obj_feat, goal_feat]
+      # and: [subj_feat, goal_feat]
+      return tf.concat([subj_feat, obj_feat, goal_feat], -1)  
+      # return tf.concat([subj_feat, goal_feat], -1)  
     return tf.concat([subj_feat, obj_feat], -1)
 
   def get_dist(self, state):
@@ -233,16 +256,30 @@ class DualRSSM(common.Module):
     subj_post, subj_prior = self.subj_rssm.obs_step(prev_state['subj'], prev_action, embed['subj'], sample)
     subj_action = self.step_subj_action(prev_state['subj'], subj_post)
     obj_post, obj_prior = self.obj_rssm.obs_step(prev_state['obj'], subj_action, embed['obj'], sample)
+    # if goal_agent and reactive:
     post = {'subj': subj_post, 'obj': obj_post}
     prior = {'subj': subj_prior, 'obj': obj_prior}
+    if self.foresight and self.strategy == 'reactive':
+      # double checked
+      next_subj_action = self.subj_rssm.get_feat(subj_post)
+      obj_goal = self.obj_rssm.img_step(obj_post, next_subj_action, sample=True)
+      post['goal'] = obj_goal
     return post, prior
 
   @tf.function
   def img_step(self, prev_state, prev_action, sample=True):
     subj_prior = self.subj_rssm.img_step(prev_state['subj'], prev_action, sample)
     subj_action = self.step_subj_action(prev_state['subj'], subj_prior)
-    obj_prior = self.obj_rssm.img_step(prev_state['obj'], subj_action, sample)
+    if self.strategy == 'reactive' and 'goal' in prev_state:
+      obj_prior = prev_state['goal']
+    else:
+      obj_prior = self.obj_rssm.img_step(prev_state['obj'], subj_action, sample)
     prior = {'subj': subj_prior, 'obj': obj_prior}
+    if self.foresight and self.strategy == 'reactive':
+      # todo: by this we will sample from the obj prior twice. 
+      # therefore we won't condition the agent by the traj. we'll go over.
+      goal_state = self.obj_rssm.img_step(obj_prior, self.subj_rssm.get_feat(subj_prior), sample)
+      prior['goal'] = goal_state
     return prior
 
   def kl_loss(self, post, prior, **kwargs):
