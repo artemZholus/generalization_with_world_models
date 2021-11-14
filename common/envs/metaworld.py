@@ -1,8 +1,10 @@
 import os
 import threading
 import pickle
+from copy import deepcopy as copy
 
 import gym
+import metaworld
 import numpy as np
 import random
 from scipy.signal import convolve2d
@@ -142,6 +144,7 @@ class MetaWorld:
     import metaworld
     domain, task = name.split('_', 1)
     self.task = task
+    self.task_id = {}
     self.env_tasks = {}
     self.envs_cls = {}
     if domain == 'mt10':
@@ -154,6 +157,7 @@ class MetaWorld:
       all_tasks = [task for task in dom.train_tasks
                     if task.env_name == name]
       task_id = random.choice(range(len(all_tasks)))
+      self.task_id[name] = task_id
       task = all_tasks[task_id]
       env.set_task(task)
       self.env_tasks[name] = (all_tasks, task_id)
@@ -180,6 +184,7 @@ class MetaWorld:
             for name in self.envs_cls.keys():
               env = self.envs_cls[name]
               tasks, task_id = self.env_tasks[name]
+              self.task_id[name] = task_id
               env.set_task(tasks[task_id])
             self._tasks = self.env_tasks[self._curr_env][0]
     self.domain = domain
@@ -265,6 +270,19 @@ class MetaWorld:
     obs['task_name'] = self._curr_env
     return obs, reward, done, info
 
+  def set_task_vector(self, vec):
+    task_id = self.task_id[self._curr_env]
+    task = copy(self._tasks[task_id])
+    task_data = pickle.loads(task.data)
+    task_data['rand_vec'] = vec
+    task_data = pickle.dumps(task_data)
+    task = metaworld.Task(env_name=task.env_name, data=task_data)
+    self._env.set_task(task)
+
+  def get_task_vector(self):
+    task_id = self.task_id[self._curr_env]
+    return pickle.loads(self._tasks[task_id].data)['rand_vec']
+
   def reset(self):
     if self.randomize_env:
       self._curr_env = random.choice(list(self.envs_cls.keys()))
@@ -276,7 +294,8 @@ class MetaWorld:
     if self.randomize_tasks:
       # TODO: maybe add per-event random task sync. 
       # for now this is fine.
-      task = self._tasks[np.random.choice(len(self._tasks))]
+      self.task_id[self._curr_env] = np.random.choice(len(self._tasks))
+      task = self._tasks[self.task_id[self._curr_env]]
       self._env.set_task(task)
     position = self._env.reset()
     obs = self.parse_obs(position)
