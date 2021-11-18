@@ -205,6 +205,14 @@ for env in eval_driver._envs:
   env.randomize_tasks = False
 eval_driver.on_episode(lambda ep: per_episode(ep, mode='eval'))
 
+prefill = max(0, config.prefill - train_replay.total_steps)
+if prefill:
+  print(f'Prefill dataset ({prefill} steps).')
+  random_agent = common.RandomAgent(action_space)
+  train_driver(random_agent, episodes=1)
+  eval_driver(random_agent, episodes=1)
+  train_driver.reset()
+  eval_driver.reset()
 
 print('Create agent.')
 train_dataset = iter(train_replay.dataset(**config.dataset))
