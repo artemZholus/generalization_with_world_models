@@ -117,7 +117,9 @@ def make_env(config, mode, **kws):
         del kws['worker_id']
     params = yaml.safe_load(config.env_params)
     params.update(kws)
-    env = common.MetaWorld(task, config.action_repeat, config.image_size, **params)
+    env = common.MetaWorld(
+      task, config.action_repeat, config.image_size, transparent=config.transparent, **params
+    )
     env.dump_tasks(str(logdir / 'tasks.pkl'))
     env = common.NormalizeAction(env)
   else:

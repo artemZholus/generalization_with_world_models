@@ -1,3 +1,4 @@
+from functools import partial
 import os
 import threading
 import pickle
@@ -11,6 +12,7 @@ from scipy.signal import convolve2d
 from filelock import FileLock
 from tensorflow.python.framework.op_def_registry import sync
 from tensorflow.python.types.core import Value
+from .async_env import Async
 
 
 MTW_GEOMS_MAP = {
@@ -121,7 +123,7 @@ class MetaWorld:
   def __init__(self, name, action_repeat=1, size=(64, 64), 
       randomize_env=True, randomize_tasks=False, offscreen=True, 
       cameras=None, segmentation=True, syncfile=None,
-      worker_id=None, 
+      worker_id=None, transparent=False,
     ):
     """
     Args: 
@@ -147,11 +149,15 @@ class MetaWorld:
     self.task_id = {}
     self.env_tasks = {}
     self.envs_cls = {}
+    self.tr_envs_cls = {}
+    self.transparent = transparent
     if domain == 'mt10':
       dom = metaworld.MT10()
     elif domain == 'ml1':
       task_name = f'{task}-v2'
       dom = metaworld.ML1(task_name)
+      if transparent:
+        dom_transparent = metaworld.ML1(task_name, transparent_sawyer=True)
     for name, env_cls in dom.train_classes.items():
       env = env_cls()
       all_tasks = [task for task in dom.train_tasks
@@ -162,6 +168,11 @@ class MetaWorld:
       env.set_task(task)
       self.env_tasks[name] = (all_tasks, task_id)
       self.envs_cls[name] = env
+      if transparent:
+        tr_env_cls = dom_transparent.train_classes[name]
+        tr_env = Async(partial(tr_env_cls, transparent_sawyer=True))
+        self.tr_envs_cls[name] = tr_env
+        tr_env.call('set_task', task)()
     self.worker_id = worker_id
     if worker_id is None:
       self._curr_env = random.choice(list(self.envs_cls.keys()))
@@ -169,6 +180,9 @@ class MetaWorld:
       env_keys = list(self.envs_cls.keys())
       self._curr_env = env_keys[worker_id % len(env_keys)]
     self._env = self.envs_cls[self._curr_env]
+    self._tr_env = None
+    if self.transparent:
+      self._tr_env = self.envs_cls[self._curr_env]
     self._tasks = self.env_tasks[self._curr_env][0]
     self.syncfile = syncfile
     print(f'sync file: {syncfile}')
@@ -186,6 +200,8 @@ class MetaWorld:
               tasks, task_id = self.env_tasks[name]
               self.task_id[name] = task_id
               env.set_task(tasks[task_id])
+              if transparent:
+                self.tr_envs_cls[name].call('set_task', tasks[task_id])()
             self._tasks = self.env_tasks[self._curr_env][0]
     self.domain = domain
 
@@ -210,7 +226,10 @@ class MetaWorld:
       tasks = pickle.load(f)
     self.env_tasks = tasks
     for name, env in self.envs_cls.items():
-      env.set_task(self.env_tasks[name][0][self.env_tasks[name][1]])
+      task = self.env_tasks[name][0][self.env_tasks[name][1]]
+      env.set_task(task)
+      if self.transparent:
+        self.tr_envs_cls[name].call('set_task', task)()
 
   def dump_tasks(self, path):
     with open(path, 'wb') as f:
@@ -256,12 +275,17 @@ class MetaWorld:
     assert np.isfinite(action).all(), action
     acc_reward = 0
     for _ in range(self._action_repeat):
+      if self.transparent:
+        tr_promise = self._tr_env.call('step', action)
       obs_vec, reward, done, info = self._env.step(action)
+      if self.transparent:
+        tr_obs_vec, tr_reward, tr_done, tr_info = tr_promise()
       acc_reward += reward or 0
       if done:
         break
     obs = self.parse_obs(obs_vec)
 
+    # TODO: transparent here
     obs['image'] = self.render()
     if self.segmentation:
       obs['segmentation'] = self.render_segm()
@@ -278,6 +302,8 @@ class MetaWorld:
     task_data = pickle.dumps(task_data)
     task = metaworld.Task(env_name=task.env_name, data=task_data)
     self._env.set_task(task)
+    if self.transparent:
+      self._tr_env.call('set_task', task)()
 
   def get_task_vector(self):
     task_id = self.task_id[self._curr_env]
@@ -290,6 +316,8 @@ class MetaWorld:
       env_keys = list(self.envs_cls.keys())
       self._curr_env = env_keys[self.worker_id % len(env_keys)]
     self._env = self.envs_cls[self._curr_env]
+    if self.transparent:
+      self._tr_env = self.tr_envs_cls[self._curr_env]
     self._tasks = self.env_tasks[self._curr_env][0]
     if self.randomize_tasks:
       # TODO: maybe add per-event random task sync. 
@@ -297,8 +325,13 @@ class MetaWorld:
       self.task_id[self._curr_env] = np.random.choice(len(self._tasks))
       task = self._tasks[self.task_id[self._curr_env]]
       self._env.set_task(task)
+      if self.transparent:
+        self._tr_env.call('set_task', task)()
     position = self._env.reset()
+    if self.transparent:
+      tr_position = self._tr_env.call('reset')()
     obs = self.parse_obs(position)
+    # TODO: transparent here
     obs['image'] = self.render()
     if self.segmentation:
       obs['segmentation'] = self.render_segm()
@@ -309,17 +342,32 @@ class MetaWorld:
     if kwargs.get('mode', 'rgb_array') != 'rgb_array':
       raise ValueError("Only render mode 'rgb_array' is supported.")
     images = []
+    tr_images = []
     for cam in self._cameras:
+      if self.transparent:
+        tr_promise = self._tr_env.call('render', self.offscreen, cam, resolution=self._size, **kwargs)
       img = self._env.render(self.offscreen, cam, resolution=self._size, **kwargs)
+      if self.transparent:
+        tr_img = tr_promise()
+        tr_images.append(tr_img)
       images.append(img)
+    images += tr_images
     return np.concatenate(images, axis=2)
 
   def render_segm(self):
     masks = []
+    tr_masks = []
     for cam in self._cameras:
+      if self.transparent:
+        tr_promise = self._tr_env.call('render', self.offscreen, cam, resolution=self.segm_size, segmentation=True)
       raw_mask = self._env.render(self.offscreen, cam, resolution=self.segm_size, segmentation=True)
       mask = self.segm2mask(raw_mask)
+      if self.transparent:
+        tr_mask = tr_promise()
+        tr_mask = self.segm2mask(tr_mask)
+        tr_masks.append(tr_mask)
       masks.append(mask)
+    masks += tr_masks
     return np.stack(masks, axis=2)
 
   def segm2mask(self, segm):

@@ -89,7 +89,20 @@ class WorldModel(common.Module):
   @tf.function
   def preprocess(self, obs):
     obs = obs.copy()
-    obs['image'] = tf.cast(obs['image'], self.dtype) / 255.0 - 0.5
+    if self.config.transparent:
+      obs['image'] = tf.cast(obs['image'], self.dtype) / 255.0 - 0.5
+      img_depth = 1 if self.config.grayscale else 3
+      n_cams = obs['image'].shape[-1] // img_depth
+      repeats = [img_depth] * n_cams
+      subject = tf.cast(obs['segmentation'][..., :1] == 1, self.dtype)
+      obj = tf.cast(obs['segmentation'][..., 1:] == 2, self.dtype)
+      subj_image = subject * obs['image'][..., :3]
+      obj_image = obj * obs['image'][..., 3:]
+      input_image = tf.concat([subj_image, obj_image], axis=-1)
+      obs['input_image'] = input_image
+      obs['image'] = obs['image'][..., :3]
+    else:
+      obs['image'] = tf.cast(obs['image'][..., :3], self.dtype) / 255.0 - 0.5
     obs['reward'] = getattr(tf, self.config.clip_rewards)(obs['reward'])
     if 'discount' in obs:
       obs['discount'] *= self.config.discount
@@ -152,14 +165,22 @@ class DualWorldModel(WorldModel):
       *self.heads.values()]
 
   def preprocess(self, obs):
+    img = obs['image']
+    img = tf.cast(img, self.dtype) / 255.0 - 0.5
     obs = super().preprocess(obs)
     img_depth = 1 if self.config.grayscale else 3
     n_cams = obs['image'].shape[-1] // img_depth
     repeats = [img_depth] * n_cams
-    subject = tf.cast(obs['segmentation'] == 1, self.dtype)
-    obj = tf.cast(obs['segmentation'] == 2, self.dtype)
-    obs['subj_image'] = tf.repeat(subject, repeats=repeats, axis=-1) * obs['image']
-    obs['obj_image'] = tf.repeat(obj, repeats=repeats, axis=-1) * obs['image']
+    if self.config.transparent:
+      subject = tf.cast(obs['segmentation'][..., :1] == 1, self.dtype)
+      obj = tf.cast(obs['segmentation'][..., 1:] == 2, self.dtype)
+      obs['subj_image'] = tf.repeat(subject, repeats=repeats, axis=-1) * img[..., :3]
+      obs['obj_image'] = tf.repeat(obj, repeats=repeats, axis=-1) * img[..., 3:]
+    else:
+      subject = tf.cast(obs['segmentation'] == 1, self.dtype)
+      obj = tf.cast(obs['segmentation'] == 2, self.dtype)
+      obs['subj_image'] = tf.repeat(subject, repeats=repeats, axis=-1) * obs['image']
+      obs['obj_image'] = tf.repeat(obj, repeats=repeats, axis=-1) * obs['image']
     return obs
   
   def loss(self, data, state=None):
