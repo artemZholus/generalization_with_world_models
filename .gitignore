@@ -6,3 +6,4 @@ MUJOCO_LOG.TXT
 wandb/*
 data/*
 bad/*
+rotated_drawer_tasks/*
