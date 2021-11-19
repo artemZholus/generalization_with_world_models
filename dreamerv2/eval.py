@@ -85,8 +85,8 @@ eval_replay = common.Replay(logdir / 'eval_replay', config.time_limit or 1, **co
 # step = elements.Counter(train_replay.total_steps)
 step = elements.Counter(0)
 outputs = [
-    elements.TerminalOutput(),
-    # elements.JSONLOutput(logdir),
+    # elements.TerminalOutput(),
+    elements.JSONLOutput(logdir),
     # elements.TensorBoardOutput(logdir),
 ]
 logger = elements.Logger(step, outputs, multiplier=config.action_repeat)
@@ -126,7 +126,10 @@ def make_env(config, mode, **kws):
   env = common.ResetObs(env)
   return env
 
+freezed_replay = False
+
 def per_episode(ep, mode):
+  global freezed_replay
   length = len(ep['reward']) - 1
   task_name = None
   if 'task_name' in ep:
@@ -134,7 +137,8 @@ def per_episode(ep, mode):
   score = float(ep['reward'].astype(np.float64).sum())
   print(f'{mode.title()} episode has {length} steps and return {score:.1f}.')
   replay_ = dict(train=train_replay, eval=eval_replay)[mode]
-  ep_file = replay_.add(ep)
+  if not freezed_replay:
+    ep_file = replay_.add(ep)
   logger.scalar(f'{mode}_transitions', replay_.num_transitions)
   logger.scalar(f'{mode}_return', score)
   logger.scalar(f'{mode}_length', length)
@@ -213,7 +217,7 @@ if prefill:
   eval_driver(random_agent, episodes=1)
   train_driver.reset()
   eval_driver.reset()
-
+freezed_replay = True
 print('Create agent.')
 train_dataset = iter(train_replay.dataset(**config.dataset))
 # eval_dataset = iter(eval_replay.dataset(**config.dataset))
@@ -245,11 +249,26 @@ class MyStatsSaver:
       pickle.dump(stats, f)
 my_saver = MyStatsSaver()
 eval_driver.on_episode(my_saver.on_episode)
-for angle in tqdm(range(0, 360, 5)):
+env_name = config.task.split('_', 2)[-1]
+env_name = env_name + '-v2'
+if config.parallel:
+  task_set, task_id = eval_driver._envs[0].call('get_task_set', env_name)()
+else:
+  task_set, task_id = eval_driver._envs[0].get_task_set(env_name)
+
+
+for angle in tqdm(range(0, 360, 5), desc=logdir.stem):
   curr_task_vec = task_vec.copy()
+  my_saver.angle = angle
   curr_task_vec[3] = float(angle)
   for env in eval_driver._envs:
-    env.set_task_vector(curr_task_vec)
+    if config.parallel:
+      curr_task = env.call('set_task_vector', curr_task_vec)()
+      env.call('set_task_set', env_name, [curr_task])()
+    else:
+      curr_task = env.set_task_vector(curr_task_vec)
+      env.set_task_set(env_name, [curr_task])
+
   eval_driver(eval_policy, episodes=100)
   my_saver.dump(logdir / 'stats.pkl')
 

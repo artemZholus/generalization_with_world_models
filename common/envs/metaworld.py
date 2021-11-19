@@ -234,6 +234,21 @@ class MetaWorld:
   def dump_tasks(self, path):
     with open(path, 'wb') as f:
       pickle.dump(self.env_tasks, f)
+    
+  # def __getattr__(self, name):
+  #   raise AttributeError(f'{type(self)} has no attr {name}!')
+
+  def set_task_set(self, env_name, task_set):
+    self.env_tasks[env_name] = (task_set, 0)
+    self.task_id[env_name] = 0
+    self.envs_cls[env_name].set_task(task_set[0])
+    if self.transparent:
+      self.tr_envs_cls[env_name].set_task(task_set[0])
+    if env_name == self._curr_env:
+      self._tasks = self.env_tasks[self._curr_env][0]
+
+  def get_task_set(self, env_name):
+    return self.env_tasks[env_name]
 
   @property
   def observation_space(self):
@@ -304,6 +319,7 @@ class MetaWorld:
     self._env.set_task(task)
     if self.transparent:
       self._tr_env.call('set_task', task)()
+    return task
 
   def get_task_vector(self):
     task_id = self.task_id[self._curr_env]
