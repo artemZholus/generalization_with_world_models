@@ -195,6 +195,60 @@ class DualWorldModel(WorldModel):
     metrics['post_obj_ent'] = post_dist['obj'].entropy().mean()
     return model_loss, post, outs, metrics
 
+  @tf.function
+  def partial_imagination(self, data, infer_start=False):
+    data = self.preprocess(data)
+    truth = data['image'][:6] + 0.5
+    embed = self.encoder(data)
+    inp = lambda x: x[:6]
+    embed = tf.nest.map_structure(inp, embed)
+    action = tf.nest.map_structure(inp, data['action'])
+    if not infer_start:
+      state = self.rssm.initial(tf.shape(action)[0])
+    else:
+      start = lambda x: x[:, :5]
+      cont = lambda x: x[:, 5:]
+      embed_start = tf.nest.map_structure(start, embed)
+      action_start = tf.nest.map_structure(start, action)
+      states, _ = self.rssm.observe(embed_start, action_start)
+      feat = self.rssm.get_feat(states)
+      recon = self.heads['image'](feat).mode()[:6] + 0.5
+      
+      embed = tf.nest.map_structure(cont, embed)
+      action = tf.nest.map_structure(cont, action)
+      last = lambda x: x[:, -1]
+      state = tf.nest.map_structure(last, states)
+
+    subj_post, _ = self.rssm.subj_rssm.observe(embed['subj'], action, state['subj'])
+    subj_actions = self.rssm.subj_action(state['subj'], subj_post)
+    obj_prior = self.rssm.obj_rssm.imagine(subj_actions, state['obj'])
+    states = {'subj': subj_post, 'obj': obj_prior}
+    feat = self.rssm.get_feat(states)
+    openl = self.heads['image'](feat).mode() + 0.5
+    if not infer_start:
+      model = openl
+    else:
+      model = tf.concat([recon[:, :5], openl], 1)
+    
+    error = (model - truth + 1) / 2
+    _, _, h, w, _ = model.shape
+    video = tf.concat([truth, model, error], 2)
+    B, T, H, W, C = video.shape
+    # vid = tf.transpose(video, (1, 4, 2, 0, 3))
+    # vid = tf.reshape(vid, (50, 3, 3*w, 6*h))
+    # vid = tf.cast(vid, tf.float32)
+    # def log_(x):
+    #   x = (x.astype(np.float32) * 255).astype(np.uint8)
+    #   wandb.log({'agent/openl': wandb.Video(x, fps=30, format="gif")})
+    # tf.print('steps elapsed:', self._log_step)
+    # if tf.equal(tf.math.mod(self._log_step, 50), 0) and self._c['wdb']:
+    #   tools.graph_summary(
+    #       self._writer, log_, vid
+    #   )
+    # self._log_step.assign_add(1)
+    video = video.transpose((1, 2, 0, 3, 4)).reshape((T, H, B * W, C))
+    return video #tf.concat(tf.split(video, C // 3, 3), 1)
+
 
 class MutualWorldModel(WorldModel):
 
