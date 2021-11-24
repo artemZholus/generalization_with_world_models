@@ -44,6 +44,7 @@ defaults:
   pred_discount: True
   zero_shot: False
   transparent: False
+  split_decoder: False
   grad_heads: [image, reward, discount]
   rssm: {hidden: 400, deter: 400, stoch: 32, discrete: 32, act: elu, std_act: sigmoid2, min_std: 0.1}
   encoder: {depth: 48, act: elu, kernels: [4, 4, 4, 4], keys: [image], rect: False}

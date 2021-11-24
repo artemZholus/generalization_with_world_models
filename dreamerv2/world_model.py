@@ -47,9 +47,17 @@ class WorldModel(common.Module):
     else:
       assert len(kl_loss.shape) == 0
       losses = {'kl': kl_loss}
+    if self.config.split_decoder:
+      subj_feat = self.rssm.subj_rssm.get_feat(post['subj'])
+      obj_feat = self.rssm.obj_rssm.get_feat(post['obj'])
     for name, head in self.heads.items():
       grad_head = (name in self.config.grad_heads)
       inp = feat if grad_head else tf.stop_gradient(feat)
+      if self.config.split_decoder:
+        if name == 'subj_image':
+          inp = subj_feat if grad_head else tf.stop_gradient(subj_feat)
+        elif name == 'obj_image':
+          inp = obj_feat if grad_head else tf.stop_gradient(obj_feat)
       like = tf.cast(head(inp).log_prob(data[name]), tf.float32)
       likes[name] = like
       if name == 'reward':
@@ -154,12 +162,15 @@ class DualWorldModel(WorldModel):
     self.rssm = common.DualRSSM(config.subj_rssm, config.obj_rssm, config.subj_strategy)
     shape = config.image_size + (config.img_channels,)
     self.encoder = common.DualConvEncoder(config.subj_encoder, config.obj_encoder)
+    if config.split_decoder:
+      self.heads['obj_image'] = common.ConvDecoder(shape, **config.decoder)
+      self.heads['subj_image'] = common.ConvDecoder(shape, **config.decoder)
     self.heads['image'] = common.ConvDecoder(shape, **config.decoder)
     self.heads['reward'] = common.MLP([], **config.reward_head)
     if config.pred_discount:
       self.heads['discount'] = common.MLP([], **config.discount_head)
-    for name in config.grad_heads:
-      assert name in self.heads, name
+    # for name in config.grad_heads:
+    #   assert name in self.heads, name
     self.modules = [
       self.encoder, self.rssm,
       *self.heads.values()]

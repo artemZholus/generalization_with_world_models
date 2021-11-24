@@ -235,6 +235,10 @@ class MetaWorld:
     with open(path, 'wb') as f:
       pickle.dump(self.env_tasks, f)
     
+  @property
+  def unwrapped(self):
+    return self._env
+  
   # def __getattr__(self, name):
   #   raise AttributeError(f'{type(self)} has no attr {name}!')
 
@@ -283,6 +287,7 @@ class MetaWorld:
     obs['prev_step_obj1_pos_quat'] = obs_vec[22:29]
     obs['prev_step_obj2_pos_quat'] = obs_vec[29:36]
     obs['goal_position'] = obs_vec[36:39]
+    obs['task_vector'] = self.unwrapped._last_rand_vec.copy()
     return obs
 
   def step(self, action):
