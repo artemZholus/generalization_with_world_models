@@ -192,19 +192,20 @@ class Reasoner(RSSM):
     return prior
 
   @tf.function
-  def obs_step(self, prev_state, post_update, sample=True):
-    curr_state = self.trans_step(prev_state)
+  def obs_step(self, prev_state, post_update, curr_state=None, sample=True):
+    if curr_state:
+      curr_state = self.trans_step(prev_state)
     post = self.update_step(curr_state, self._cast(post_update), name='obs', sample=sample)
     return post
 
   @tf.function
-  def img_step(self, prev_state, prior_update, sample=True):
-    curr_state = self.trans_step(prev_state)
+  def img_step(self, prev_state, prior_update, curr_state=None, sample=True):
+    if curr_state is None:
+      curr_state = self.trans_step(prev_state)
     prior = self.update_step(curr_state, self._cast(prior_update), name='img', sample=sample)
     return prior
   
-  @tf.function
-  def update_step(self, curr_state, update, name, sample=True):
+  def update_step(self, curr_state, update, name='', sample=True):
     state_emb = curr_state['out']
     x = tf.concat([state_emb, update], -1)
     x = self.get(f'{name}_out', tfkl.Dense, self._hidden, self._act)(x)
@@ -254,22 +255,36 @@ class DualReasoner(RSSM):
     self.condition_model = common.ConditionModel(size=cond_stoch, hidden=hidden, act=act, discrete=discrete, layers=2)
   
   @tf.function
-  def top_down_step(self, state, obj_emb=None, subj_emb=None, sample=True):
+  def top_down_step(self, state, obj_emb=None, subj_emb=None, current_step=None, sample=True):
     subj_state = state['subj']
     obj_state = state['obj']
-    obj_post = self.obj_reasoner.obs_step(prev_state=obj_state, post_update=obj_emb, sample=sample)
+    if current_step is not None:
+      subj_curr_state = current_step['subj']['curr_state']
+      obj_curr_state = current_step['obj']['curr_state']
+    else:
+      subj_curr_state = None
+      obj_curr_state = None
+    obj_post = self.obj_reasoner.obs_step(prev_state=obj_state, post_update=obj_emb, curr_state=subj_curr_state, sample=sample)
     utility = self.condition_model.observe(self.obj_reasoner.get_feat(obj_post), sample=sample)
     post_update = tf.concat([self._cast(utility['stoch']), subj_emb], -1)
-    subj_post = self.subj_reasoner.obs_step(prev_state=subj_state, post_update=post_update, sample=sample)
+    subj_post = self.subj_reasoner.obs_step(prev_state=subj_state, post_update=post_update, curr_state=subj_curr_state, sample=sample)
     return {'subj': subj_post, 'obj': obj_post, 'utility': utility}
 
   @tf.function
-  def bottom_up_step(self, state, action, sample=True):
+  def bottom_up_step(self, state, action, current_step=None, sample=True):
     subj_state = state['subj']
     obj_state = state['obj']
-    subj_prior = self.subj_reasoner.img_step(prev_state=subj_state, prior_update=action, sample=sample)
+    if current_step is not None:
+      subj_curr_state = current_step['subj']['curr_state']
+      obj_curr_state = current_step['obj']['curr_state']
+    else:
+      subj_curr_state = None
+      obj_curr_state = None
+    subj_prior = self.subj_reasoner.img_step(prev_state=subj_state, prior_update=action, 
+                                             curr_state=subj_curr_state, sample=sample)
     utility = self.condition_model.imagine(self.subj_reasoner.get_feat(subj_prior), sample=sample)
-    obj_prior = self.obj_reasoner.img_step(prev_state=obj_state, prior_update=self._cast(utility['stoch']), sample=sample)
+    obj_prior = self.obj_reasoner.img_step(prev_state=obj_state, prior_update=self._cast(utility['stoch']), 
+                                           curr_state=obj_curr_state, sample=sample)
     return {'subj': subj_prior, 'obj': obj_prior, 'utility': utility}
 
   @tf.function
@@ -297,8 +312,8 @@ class DualReasoner(RSSM):
   @tf.function
   def obs_step(self, state, action, emb, sample=True):
     # TODO: do not infer rnn twice
-    post = self.top_down_step(state, emb['obj'], emb['subj'], sample=sample)
     prior = self.bottom_up_step(state, action, sample=sample)
+    post = self.top_down_step(state, emb['obj'], emb['subj'], current_step=prior, sample=sample)
     return post, prior
 
   def initial(self, batch_size):
