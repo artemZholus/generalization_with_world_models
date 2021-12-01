@@ -23,7 +23,8 @@ class Agent(common.Module):
     self.wm = dict(
       dual=lambda: world_model.DualWorldModel(self.step, config),
       mutual=lambda: world_model.MutualWorldModel(self.step, config),
-      dreamer=lambda: world_model.DreamerWorldModel(self.step, config)
+      dreamer=lambda: world_model.DreamerWorldModel(self.step, config),
+      causal=lambda: world_model.CausalWorldModel(self.step, config),
     )[config.world_model]()
     if config.zero_shot:
       self._zero_shot_ac = ActorCritic(config, self.step, self._num_act) 
@@ -109,7 +110,7 @@ class Agent(common.Module):
 
   @tf.function
   def report(self, data):
-    return {'openl': self.wm.video_pred(data)}
+    return self.wm.video_pred(data)
 
 class ActorCritic(common.Module):
 

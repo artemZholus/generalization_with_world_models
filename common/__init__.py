@@ -7,3 +7,4 @@ from .envs import *
 from .tfutils import *
 from .dists import *
 from .nets import *
+from .state_models import *

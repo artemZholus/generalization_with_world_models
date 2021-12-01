@@ -39,7 +39,6 @@ class WorldModel(common.Module):
     embed = self.encoder(data)
     post, prior = self.rssm.observe(embed, data['action'], state)
     kl_loss, kl_value = self.rssm.kl_loss(post, prior, **self.config.kl)
-    feat = self.rssm.get_feat(post)
     # stoch deter (mean std)/(logit)
     likes = {}
     if isinstance(kl_loss, dict):
@@ -47,17 +46,10 @@ class WorldModel(common.Module):
     else:
       assert len(kl_loss.shape) == 0
       losses = {'kl': kl_loss}
-    if self.config.split_decoder:
-      subj_feat = self.rssm.subj_rssm.get_feat(post['subj'])
-      obj_feat = self.rssm.obj_rssm.get_feat(post['obj'])
     for name, head in self.heads.items():
+      feat = self.rssm.get_feat(post, key=name)
       grad_head = (name in self.config.grad_heads)
       inp = feat if grad_head else tf.stop_gradient(feat)
-      if self.config.split_decoder:
-        if name == 'subj_image':
-          inp = subj_feat if grad_head else tf.stop_gradient(subj_feat)
-        elif name == 'obj_image':
-          inp = obj_feat if grad_head else tf.stop_gradient(obj_feat)
       like = tf.cast(head(inp).log_prob(data[name]), tf.float32)
       likes[name] = like
       if name == 'reward':
@@ -79,11 +71,11 @@ class WorldModel(common.Module):
     start = tf.nest.map_structure(flatten, start)
     def step(prev, _):
       state, _, _ = prev
-      feat = self.rssm.get_feat(state)
+      feat = self.rssm.get_feat(state, key='policy')
       action = policy(tf.stop_gradient(feat)).sample()
       succ = self.rssm.img_step(state, action)
       return succ, feat, action
-    feat = 0 * self.rssm.get_feat(start)
+    feat = 0 * self.rssm.get_feat(start, key='policy')
     action = policy(feat).mode()
     succs, feats, actions = common.static_scan(
         step, tf.range(horizon), (start, feat, action))
@@ -117,39 +109,27 @@ class WorldModel(common.Module):
     return obs
   
   @tf.function
-  def video_pred(self, data):
+  def video_pred(self, data, img_key='image'):
     data = self.preprocess(data)
-    truth = data['image'][:6] + 0.5
+    truth = data[img_key][:6] + 0.5
     embed = self.encoder(data)
     inp = lambda x: x[:6, :5]
     embed = tf.nest.map_structure(inp, embed)
     action = tf.nest.map_structure(inp, data['action'])
     states, _ = self.rssm.observe(embed, action)
-    feat = self.rssm.get_feat(states)
-    recon = self.heads['image'](feat).mode()[:6]
+    feat = self.rssm.get_feat(states, key=img_key)
+    recon = self.heads[img_key](feat).mode()[:6]
     
     last = lambda x: x[:, -1]
     init = tf.nest.map_structure(last, states)
     prior = self.rssm.imagine(data['action'][:6, 5:], init)
-    feat = self.rssm.get_feat(prior)
-    openl = self.heads['image'](feat).mode()
+    feat = self.rssm.get_feat(prior, key=img_key)
+    openl = self.heads[img_key](feat).mode()
     model = tf.concat([recon[:, :5] + 0.5, openl + 0.5], 1)
     error = (model - truth + 1) / 2
     _, _, h, w, _ = model.shape
     video = tf.concat([truth, model, error], 2)
     B, T, H, W, C = video.shape
-    # vid = tf.transpose(video, (1, 4, 2, 0, 3))
-    # vid = tf.reshape(vid, (50, 3, 3*w, 6*h))
-    # vid = tf.cast(vid, tf.float32)
-    # def log_(x):
-    #   x = (x.astype(np.float32) * 255).astype(np.uint8)
-    #   wandb.log({'agent/openl': wandb.Video(x, fps=30, format="gif")})
-    # tf.print('steps elapsed:', self._log_step)
-    # if tf.equal(tf.math.mod(self._log_step, 50), 0) and self._c['wdb']:
-    #   tools.graph_summary(
-    #       self._writer, log_, vid
-    #   )
-    # self._log_step.assign_add(1)
     video = video.transpose((1, 2, 0, 3, 4)).reshape((T, H, B * W, C))
     return tf.concat(tf.split(video, C // 3, 3), 1)
 
@@ -301,6 +281,7 @@ class MutualWorldModel(WorldModel):
     metrics['post_obj_ent'] = post_dist['obj'].entropy().mean()
     return model_loss, post, outs, metrics
 
+
 class DreamerWorldModel(WorldModel):
 
   def __init__(self, step, config):
@@ -332,3 +313,61 @@ class DreamerWorldModel(WorldModel):
     states = {k: tf.concat([
         start[k][None], v[:-1]], 0) for k, v in states.items()}
     return feats, states, actions, discount
+
+
+class CausalWorldModel(WorldModel):
+  def __init__(self, step, config):
+    super().__init__(step, config)
+    shape = config.image_size + (config.img_channels,)
+    self.rssm = common.DualReasoner(**config.rssm, cond_stoch=config.cond_model_size)
+    self.encoder = common.DualConvEncoder(config.subj_encoder, config.obj_encoder)
+    self.heads['subj_image'] = common.ConvDecoder(shape, **config.decoder)
+    self.heads['obj_image'] = common.ConvDecoder(shape, **config.decoder)
+    self.heads['reward'] = common.MLP([], **config.reward_head)
+    if config.pred_discount:
+      self.heads['discount'] = common.MLP([], **config.discount_head)
+    self.modules = [
+      self.rssm, self.encoder,
+      *self.heads.values()
+    ]
+
+  def preprocess(self, obs):
+    img = obs['image']
+    img = tf.cast(img, self.dtype) / 255.0 - 0.5
+    obs = super().preprocess(obs)
+    img_depth = 1 if self.config.grayscale else 3
+    n_cams = obs['image'].shape[-1] // img_depth
+    repeats = [img_depth] * n_cams
+    if self.config.transparent:
+      subject = tf.cast(obs['segmentation'][..., :1] == 1, self.dtype)
+      obj = tf.cast(obs['segmentation'][..., 1:] == 2, self.dtype)
+      obs['subj_image'] = tf.repeat(subject, repeats=repeats, axis=-1) * img[..., :3]
+      obs['obj_image'] = tf.repeat(obj, repeats=repeats, axis=-1) * img[..., 3:]
+    else:
+      subject = tf.cast(obs['segmentation'] == 1, self.dtype)
+      obj = tf.cast(obs['segmentation'] == 2, self.dtype)
+      obs['subj_image'] = tf.repeat(subject, repeats=repeats, axis=-1) * obs['image']
+      obs['obj_image'] = tf.repeat(obj, repeats=repeats, axis=-1) * obs['image']
+    return obs
+
+  def loss(self, data, state):
+    model_loss, post, outs, metrics = super().loss(data, state)
+    metrics['model_subj_kl'] = outs['kl']['subj'].mean()
+    metrics['model_obj_kl'] = outs['kl']['obj'].mean()
+    metrics['model_util_kl'] = outs['kl']['util'].mean()
+    prior_dist = self.rssm.get_dist(outs['prior'])
+    post_dist = self.rssm.get_dist(outs['post'])
+    metrics['prior_subj_ent'] = prior_dist['subj'].entropy().mean()
+    metrics['post_subj_ent'] = post_dist['subj'].entropy().mean()
+    metrics['prior_obj_ent'] = prior_dist['obj'].entropy().mean()
+    metrics['post_obj_ent'] = post_dist['obj'].entropy().mean()
+    metrics['post_util_ent'] = post_dist['utility'].entropy().mean()
+    metrics['prior_util_ent'] = prior_dist['utility'].entropy().mean()
+    return model_loss, post, outs, metrics
+
+  @tf.function
+  def video_pred(self, data):
+    return {
+      'subj': super().video_pred(data, img_key='subj_image'),
+      'obj': super().video_pred(data, img_key='obj_image'),
+    }

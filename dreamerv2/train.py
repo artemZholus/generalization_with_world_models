@@ -278,10 +278,19 @@ while step < config.steps:
   logger.write()
   print('Start evaluation.')
   video = agnt.report(next(eval_dataset))
-  logger.add(video, prefix='eval')
+  if isinstance(video, dict):
+    for k, vid in video.items():
+      logger.add({'openl': vid}, prefix=f'eval_{k}')
+  else:    
+    logger.add({'openl': video}, prefix='eval')
   if should_openl_video(step) and config.logging.wdb:
-    video = (np.transpose(video['openl'], (0, 3, 1, 2)) * 255).astype(np.uint8)
-    wandb.log({f"eval_openl": wandb.Video(video, fps=30, format="gif")})
+    if isinstance(video, dict):
+      for k, vid in video.items():
+        vi = (np.transpose(vid, (0, 3, 1, 2)) * 255).astype(np.uint8)
+        wandb.log({f"eval_openl_{k}": wandb.Video(vi, fps=30, format="gif")})
+    else:
+      video = (np.transpose(video['openl'], (0, 3, 1, 2)) * 255).astype(np.uint8)
+      wandb.log({f"eval_openl": wandb.Video(video, fps=30, format="gif")})
   eval_policy = functools.partial(agnt.policy, mode='eval')
   eval_driver(eval_policy, episodes=config.eval_eps)
   print('Start training.')
