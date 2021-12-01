@@ -38,6 +38,7 @@ defaults:
   expl_until: 0
   eval_noise: 0.0
   eval_state_mean: False
+  agent_path: none
 
   # World Model
   world_model: dreamer
@@ -45,6 +46,8 @@ defaults:
   zero_shot: False
   transparent: False
   split_decoder: False
+  train_wm_only: False
+  train_ac_only: False
   grad_heads: [image, reward, discount]
   rssm: {hidden: 400, deter: 400, stoch: 32, discrete: 32, act: elu, std_act: sigmoid2, min_std: 0.1}
   encoder: {depth: 48, act: elu, kernels: [4, 4, 4, 4], keys: [image], rect: False}
@@ -352,6 +355,16 @@ open_umbrella:
   task: metaworld_ml1_drawer-open-rotated
   train_tasks_file: ./rotated_drawer_tasks/open_umbrella_train
   test_tasks_file: ./rotated_drawer_tasks/open_umbrella_test
+
+open_full:
+  task: metaworld_ml1_drawer-open-rotated
+  train_tasks_file: ./rotated_drawer_tasks/open_full_train
+  test_tasks_file: ./rotated_drawer_tasks/open_full_test
+
+close_full:
+  task: metaworld_ml1_drawer-close-rotated
+  train_tasks_file: ./rotated_drawer_tasks/close_full_train
+  test_tasks_file: ./rotated_drawer_tasks/close_full_test
 
 mt10:
   logging.exp_name: mt10

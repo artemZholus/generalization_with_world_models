@@ -1,6 +1,7 @@
 import pathlib
 import pickle
 import re
+import math
 
 import numpy as np
 import tensorflow as tf
@@ -48,6 +49,26 @@ class Module(tf.Module):
       self._modules[name] = ctor(*args, **kwargs)
     return self._modules[name]
 
+def reset_model(module):
+  # c = 0
+  def reset_one(weight):
+    # nonlocal c
+    s = weight.shape
+    if len(s) == 2:
+      fan_avg = (s[0] + s[1]) / 2
+      limit = math.sqrt(3 / fan_avg)
+      # c += s[0] * s[1]
+      return np.random.uniform(-limit, limit, s).astype(np.float32)
+    elif len(s) == 1:
+      # c += s[0]
+      return np.zeros(s).astype(np.float32)
+    elif s == ():
+      return 0
+    else:
+      print(weight)
+      return weight
+  tf.nest.map_structure(lambda x: x.assign(reset_one(x)), module.variables)
+  # print(f'reset {c} parameters')
 
 class Optimizer(tf.Module):
 

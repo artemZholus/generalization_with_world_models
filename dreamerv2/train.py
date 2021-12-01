@@ -244,8 +244,12 @@ elif config.multitask.mode == 'addressing':
 elif config.multitask.mode == 'addressing_dyne':
   batch_proposal = proposal.DyneRetrospectiveAddressing(config, agnt, step, train_dataset, mt_replay, trainer.dyne_encoder)
 print('Agent created')
-if (logdir / 'variables.pkl').exists():
-  agnt.load(logdir / 'variables.pkl')
+if (logdir / 'variables.pkl').exists() or config.agent_path != 'none':
+  if config.agent_path == 'none':
+    agnt.load(logdir / 'variables.pkl')
+  else:
+    agnt.load(config.agent_path)
+    common.tfutils.reset_model(agnt._task_behavior)
 else:
   config.pretrain and print('Pretrain agent.')
   for _ in tqdm(range(config.pretrain)):

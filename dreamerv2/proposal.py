@@ -17,6 +17,9 @@ class TrainProposal:
     def __init__(self, config, agnt, step, dataset):
       self.wm = agnt.wm
       self.ac = agnt._task_behavior
+      self.train_wm_only = config.train_wm_only
+      self.train_ac_only = config.train_ac_only
+      assert not (self.train_ac_only and self.train_wm_only)
       self.reward = agnt.reward
       self.config = config
       self.dataset = dataset
@@ -33,7 +36,7 @@ class TrainProposal:
       return _, mets
     
     def propose_batch(self, agnt, metrics):
-      return next(self.dataset), True, True
+      return next(self.dataset), not self.train_ac_only, not self.train_wm_only
 
     def before_train(self):
       pass
