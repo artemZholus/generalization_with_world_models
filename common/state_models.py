@@ -240,7 +240,7 @@ class Reasoner(RSSM):
 class DualReasoner(RSSM):
   def __init__(
     self, stoch=30, cond_stoch=50, deter=200, hidden=200, discrete=False, act=tf.nn.elu,
-    std_act='softplus', min_std=0.1
+    std_act='softplus', min_std=0.1, cond_kws=None
   ):
     self._stoch = stoch
     self._deter = deter
@@ -252,7 +252,14 @@ class DualReasoner(RSSM):
     self._cast = lambda x: tf.cast(x, prec.global_policy().compute_dtype)
     self.obj_reasoner = Reasoner(stoch=stoch, deter=deter, hidden=hidden, discrete=discrete, act=act, std_act=std_act, min_std=min_std)
     self.subj_reasoner = Reasoner(stoch=stoch, deter=deter, hidden=hidden, discrete=discrete, act=act, std_act=std_act, min_std=min_std)
-    self.condition_model = common.ConditionModel(size=cond_stoch, hidden=hidden, act=act, discrete=discrete, layers=2)
+    if cond_kws is None:
+      cond_kws = {}
+    cond_kws['hidden'] = cond_kws.get('hidden', hidden)
+    cond_kws['act'] = cond_kws.get('act', act)
+    cond_kws['discrete'] = cond_kws.get('discrete', discrete)
+    cond_kws['layers'] = cond_kws.get('layers', 2)
+    cond_kws['size'] = cond_kws.get('size', cond_stoch)
+    self.condition_model = common.ConditionModel(**cond_kws)
   
   @tf.function
   def top_down_step(self, state, obj_emb=None, subj_emb=None, current_step=None, sample=True):
