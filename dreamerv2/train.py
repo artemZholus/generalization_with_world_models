@@ -122,6 +122,15 @@ def make_env(config, mode, **kws):
     )
     env.dump_tasks(str(logdir / 'tasks.pkl'))
     env = common.NormalizeAction(env)
+  elif suite == 'causal':
+    variables_space = dict(train='space_a', eval='space_b')[mode]
+    params = yaml.safe_load(config.env_params)
+    params.update(kws)
+    env = common.CausalWorld(
+      task, variables_space, config.action_repeat,
+      config.image_size, **params
+    )
+    env = common.NormalizeAction(env)
   else:
     raise NotImplementedError(suite)
   env = common.TimeLimit(env, config.time_limit)
