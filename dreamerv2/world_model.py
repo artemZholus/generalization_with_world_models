@@ -110,7 +110,7 @@ class WorldModel(common.Module):
       obs['obj_image'] = tf.cast(obs['obj_image'], self.dtype) / 255.0 - 0.5
       obs['image'] = tf.cast(obs['image'], self.dtype) / 255.0 - 0.5
     else:
-      obs['image'] = tf.cast(obs['image'][..., :3], self.dtype) / 255.0 - 0.5
+      obs['image'] = tf.cast(obs['image'], self.dtype) / 255.0 - 0.5
     obs['reward'] = getattr(tf, self.config.clip_rewards)(obs['reward'])
     if 'discount' in obs:
       obs['discount'] *= self.config.discount

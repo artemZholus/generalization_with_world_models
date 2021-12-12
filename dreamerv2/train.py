@@ -178,14 +178,6 @@ def per_episode(ep, mode):
       video = np.concatenate(videos, 3)
       if config.logging.wdb:
         wandb.log({f"{mode}_policy": wandb.Video(video, fps=30, format="gif")})
-      video = np.transpose(ep['obj_image'], (0, 3, 1, 2))
-      videos = []
-      rows = video.shape[1] // 3
-      for row in range(rows):
-        videos.append(video[:, row * 3: (row + 1) * 3])
-      video = np.concatenate(videos, 3)
-      if config.logging.wdb:
-        wandb.log({f"{mode}_obj_policy": wandb.Video(video, fps=30, format="gif")})
       video = np.transpose(ep['segmentation'], (0, 3, 1, 2)).astype(np.float)
       video *= 100
       videos = []

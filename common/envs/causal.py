@@ -1,19 +1,13 @@
-from functools import partial
 import os
-import pickle
-from copy import deepcopy as copy
 
 import gym
+import numpy as np
+
 from causal_world.envs import CausalWorld as CausalWorldEnv
 from causal_world.task_generators import generate_task
 from causal_world.intervention_actors import GoalInterventionActorPolicy
 from causal_world.wrappers.curriculum_wrappers import CurriculumWrapper
-import numpy as np
-import random
-from scipy.signal import convolve2d
-from tensorflow.python.framework.op_def_registry import sync
-from tensorflow.python.types.core import Value
-from .async_env import Async
+
 
 OBJ_IMG_OBJ_IDS = {
   'reaching': [],
@@ -66,7 +60,7 @@ class NullContext:
 class CausalWorld:
 
   def __init__(self, task_family, variables_space='space_a_b', action_repeat=1, 
-               size=(64, 64), randomize_env=False, randomize_tasks=True, 
+               size=(64, 64), randomize_env=False, randomize_tasks=False, randomize_envs=True,
                offscreen=True,  worker_id=None, syncfile=None, observation_mode='pixel'):
     if offscreen:
       os.environ['MUJOCO_GL'] = 'egl'
@@ -82,8 +76,11 @@ class CausalWorld:
     self._env = CausalWorldEnv(task, seed=self._worker_id, enable_visualization=False, 
                                   normalize_observations=False,
                                   normalize_actions=False,
+                                  initialize_all_clients=False,
                                   camera_indicies=[0, 1],
-                                  observation_mode='structured')
+                                  observation_mode=observation_mode)
+    if randomize_envs:
+      self._env.sample_new_goal()
     if randomize_tasks:
       self._env = CurriculumWrapper(self._env,
                             intervention_actors=[GoalInterventionActorPolicy()],
@@ -119,9 +116,8 @@ class CausalWorld:
       # TODO:
       # do something about decoding structured observations
       spaces['image'] = gym.spaces.Box(
-        0, 255, self._size + (9,), dtype=np.uint8)
-      spaces['obj_image'] = gym.spaces.Box(
-        0, 255, self._size + (9,), dtype=np.uint8)
+        0, 255, self._size + (6,), dtype=np.uint8)
+      spaces['segmentation'] = gym.spaces.Box(0, 255, self._size + (2,), dtype=np.uint8)
     return gym.spaces.Dict(spaces)
 
   # checked
@@ -160,11 +156,11 @@ class CausalWorld:
              'robot': obs_vec[:3, ...], 
              'goal': obs_vec[3:, ...]}
     else:
-      obs = {'flat_obs': obs_vec}
-      full_imgs, obj_imgs, full_masks = self.render()
-      obs['image'] = full_imgs
-      obs['segmentation'] = full_masks
-      obs['obj_image'] = obj_imgs
+      obs, segm = self._env.render_with_masks()
+      full_mask = self.convert_segm(segm, 'subj')
+      obs = {'flat_obs': obs_vec,
+             'image': np.concatenate(obs, axis=2),
+             'segmentation': full_mask}
 
     info['discount'] = np.array(1. if not done else 0., np.float32)
     return obs, reward, done, info
@@ -176,11 +172,11 @@ class CausalWorld:
     if self.observation_mode == 'pixel':
       obs = {'flat_obs': obs_vec, 'obs': obs_vec[:3, ...], 'goal': obs_vec[3:, ...]}
     else:
-      obs = {'flat_obs': obs_vec}
-      full_imgs, obj_imgs, full_masks = self.render()
-      obs['image'] = full_imgs
-      obs['segmentation'] = full_masks
-      obs['obj_image'] = obj_imgs
+      obs, segm = self._env.render_with_masks()
+      full_mask = self.convert_segm(segm, 'subj')
+      obs = {'flat_obs': obs_vec,
+             'image': np.concatenate(obs, axis=2),
+             'segmentation': full_mask}
     return obs
 
   def render(self):
@@ -190,7 +186,7 @@ class CausalWorld:
     obj_obs[(obj_obs == 255).all(axis=3), :] = 0
     return np.concatenate(full_obs, axis=2), np.concatenate(obj_obs, axis=2), full_mask
 
-  def convert_segm(self, segm, kind='obj'):
+  def convert_segm(self, segm, kind='subj'):
     obj_img_obj_mask_ids = OBJ_IMG_OBJ_IDS[self.task_family]
     full_img_obj_mask_ids = FULL_IMG_OBJ_IDS[self.task_family]
     full_img_robot_mask_ids = FULL_IMG_ROBOT_IDS[self.task_family]
