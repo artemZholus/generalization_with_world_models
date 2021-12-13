@@ -193,7 +193,7 @@ class Reasoner(RSSM):
 
   @tf.function
   def obs_step(self, prev_state, post_update, curr_state=None, sample=True):
-    if curr_state:
+    if curr_state is None:
       curr_state = self.trans_step(prev_state)
     post = self.update_step(curr_state, self._cast(post_update), name='obs', sample=sample)
     return post
@@ -251,7 +251,8 @@ class DualReasoner(RSSM):
     self._min_std = min_std
     self._cast = lambda x: tf.cast(x, prec.global_policy().compute_dtype)
     self.obj_reasoner = Reasoner(stoch=stoch, deter=deter, hidden=hidden, discrete=discrete, act=act, std_act=std_act, min_std=min_std)
-    self.subj_reasoner = Reasoner(stoch=stoch, deter=deter, hidden=hidden, discrete=discrete, act=act, std_act=std_act, min_std=min_std)
+    # self.subj_reasoner = Reasoner(stoch=stoch, deter=deter, hidden=hidden, discrete=discrete, act=act, std_act=std_act, min_std=min_std)
+    self.subj_reasoner = RSSM(stoch=stoch, deter=deter, hidden=hidden, discrete=discrete, act=act, std_act=std_act, min_std=min_std)
     if cond_kws is None:
       cond_kws = {}
     cond_kws['hidden'] = cond_kws.get('hidden', hidden)
@@ -262,11 +263,11 @@ class DualReasoner(RSSM):
     self.condition_model = common.ConditionModel(**cond_kws)
   
   @tf.function
-  def top_down_step(self, state, obj_emb=None, subj_emb=None, current_step=None, sample=True):
+  def top_down_step(self, state, obj_emb=None, subj_emb=None, action=None, current_step=None, sample=True):
     subj_state = state['subj']
     obj_state = state['obj']
     if current_step is not None:
-      subj_curr_state = current_step['subj']['curr_state']
+      subj_curr_state = current_step['subj'].get('curr_state', None)
       obj_curr_state = current_step['obj']['curr_state']
     else:
       subj_curr_state = None
@@ -274,7 +275,9 @@ class DualReasoner(RSSM):
     obj_post = self.obj_reasoner.obs_step(prev_state=obj_state, post_update=obj_emb, curr_state=subj_curr_state, sample=sample)
     utility = self.condition_model.observe(self.obj_reasoner.get_feat(obj_post), sample=sample)
     post_update = tf.concat([self._cast(utility['stoch']), subj_emb], -1)
-    subj_post = self.subj_reasoner.obs_step(prev_state=subj_state, post_update=post_update, curr_state=subj_curr_state, sample=sample)
+    subj_post, _ = self.subj_reasoner.obs_step(
+      prev_state=subj_state, embed=post_update, prev_action=action, sample=sample
+    )
     return {'subj': subj_post, 'obj': obj_post, 'utility': utility}
 
   @tf.function
@@ -287,8 +290,9 @@ class DualReasoner(RSSM):
     else:
       subj_curr_state = None
       obj_curr_state = None
-    subj_prior = self.subj_reasoner.img_step(prev_state=subj_state, prior_update=action, 
-                                             curr_state=subj_curr_state, sample=sample)
+    subj_prior = self.subj_reasoner.img_step(prev_state=subj_state, prev_action=action, 
+                                             #curr_state=subj_curr_state, 
+                                             sample=sample)
     utility = self.condition_model.imagine(self.subj_reasoner.get_feat(subj_prior), sample=sample)
     obj_prior = self.obj_reasoner.img_step(prev_state=obj_state, prior_update=self._cast(utility['stoch']), 
                                            curr_state=obj_curr_state, sample=sample)
@@ -320,7 +324,7 @@ class DualReasoner(RSSM):
   def obs_step(self, state, action, emb, sample=True):
     # TODO: do not infer rnn twice
     prior = self.bottom_up_step(state, action, sample=sample)
-    post = self.top_down_step(state, emb['obj'], emb['subj'], current_step=prior, sample=sample)
+    post = self.top_down_step(state, emb['obj'], emb['subj'], action=action, current_step=prior, sample=sample)
     return post, prior
 
   def initial(self, batch_size):
