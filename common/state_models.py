@@ -303,8 +303,8 @@ class DualReasoner(RSSM):
     return {'subj': subj_prior, 'obj': obj_prior, 'utility': utility}
 
   @tf.function
-  def img_step(self, state, action, sample=True):
-    return self.bottom_up_step(state, action, sample=sample)
+  def img_step(self, state, action, task_vec=None, sample=True):
+    return self.bottom_up_step(state, action, task_vec=task_vec, sample=sample)
 
   def get_feat(self, state, key=None):
     if key is not None and 'subj' in key:

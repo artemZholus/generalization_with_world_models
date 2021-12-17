@@ -64,7 +64,7 @@ class WorldModel(common.Module):
 
     return model_loss, post, outs, metrics
 
-  def imagine(self, policy, start, horizon):
+  def imagine(self, policy, start, horizon, task_vec=None):
     print('calling wm imagine')
     flatten = lambda x: x.reshape([-1] + list(x.shape[2:]))
     # start = {k: flatten(v) for k, v in start.items()}
@@ -73,7 +73,7 @@ class WorldModel(common.Module):
       state, _, _ = prev
       feat = self.rssm.get_feat(state, key='policy')
       action = policy(tf.stop_gradient(feat)).sample()
-      succ = self.rssm.img_step(state, action)
+      succ = self.rssm.img_step(state, action, task_vec=task_vec)
       return succ, feat, action
     feat = 0 * self.rssm.get_feat(start, key='policy')
     action = policy(feat).mode()

@@ -99,7 +99,7 @@ class Agent(common.Module):
       zs_metrics = self._zero_shot_ac.train(self.wm, start, reward)
       metrics.update({f'zero-shot/{k}': v for k, v in zs_metrics.items()})
     if do_ac_step:
-      metrics.update(self._task_behavior.train(self.wm, start, reward))
+      metrics.update(self._task_behavior.train(self.wm, start, reward, task_vec=data.get('task_vector', None)))
     if self.config.expl_behavior != 'greedy':
       if self.config.pred_discount:
         data = tf.nest.map_structure(lambda x: x[:, :-1], data)
@@ -128,12 +128,12 @@ class ActorCritic(common.Module):
     self.actor_opt = common.Optimizer('actor', **config.actor_opt)
     self.critic_opt = common.Optimizer('critic', **config.critic_opt)
 
-  def train(self, world_model, start, reward_fn):
+  def train(self, world_model, start, reward_fn, task_vec=None):
     print('calling ac train')
     metrics = {}
     hor = self.config.imag_horizon
     with tf.GradientTape() as actor_tape:
-      feat, state, action, disc = world_model.imagine(self.actor, start, hor)
+      feat, state, action, disc = world_model.imagine(self.actor, start, hor, task_vec=task_vec)
       reward = reward_fn(feat, state, action)
       target, weight, mets1 = self.target(feat, action, reward, disc)
       actor_loss, mets2 = self.actor_loss(feat, action, target, weight)
