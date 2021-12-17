@@ -1,3 +1,4 @@
+from collections import defaultdict
 from functools import partial
 import os
 import threading
@@ -230,6 +231,20 @@ class MetaWorld:
       env.set_task(task)
       if self.transparent:
         self.tr_envs_cls[name].call('set_task', task)()
+
+  def create_tasks(self, params):
+    new_taskset = defaultdict(list)
+    for name, env in self.envs_cls.items():
+      for vec in params[name]:
+        task = self.env_tasks[name][0][self.env_tasks[name][1]]
+        new_task = pickle.loads(task.data)
+        new_task['rand_vec'] = vec
+        new_task = metaworld.Task(env_name=task.env_name, data=pickle.dumps(new_task))
+        new_taskset[name].append(new_task)
+    for name, env in self.envs_cls.items():
+      self.env_tasks[name] = (new_taskset[name], 0)
+    self.dump_tasks(f'{self.syncfile}_iid_eval.data')
+    self.load_tasks(f'{self.syncfile}_iid_eval.data')
 
   def dump_tasks(self, path):
     with open(path, 'wb') as f:

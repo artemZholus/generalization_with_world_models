@@ -6,6 +6,7 @@ import pathlib
 import sys
 import warnings
 from functools import partial
+from copy import deepcopy as copy
 import wandb
 
 try:
@@ -136,7 +137,7 @@ def per_episode(ep, mode):
     task_name = ep['task_name'][0]
   score = float(ep['reward'].astype(np.float64).sum())
   print(f'{mode.title()} episode has {length} steps and return {score:.1f}.')
-  replay_ = dict(train=train_replay, eval=eval_replay)[mode]
+  replay_ = dict(train=train_replay, eval=eval_replay)[mode if 'eval' not in mode else 'eval']
   ep_file = replay_.add(ep)
   if mode == 'train' and config.multitask.bootstrap:
     # mt_replay.add(ep)
@@ -145,8 +146,8 @@ def per_episode(ep, mode):
   logger.scalar(f'{mode}_return', score)
   logger.scalar(f'{mode}_length', length)
   logger.scalar(f'{mode}_eps', replay_.num_episodes)
-  prefix = 'eval' if mode == 'eval' else ''
-  if task_name is not None and mode == 'eval':
+  prefix = mode if 'eval' in mode else ''
+  if task_name is not None and 'eval' in mode:
     task_name = task_name[:-len('-v2')]
     prefix = f'{prefix}_{task_name}'
   summ = {
@@ -157,7 +158,7 @@ def per_episode(ep, mode):
   }
   if config.logging.wdb:
     wandb.log(summ)
-  should = {'train': should_video_train, 'eval': should_video_eval}[mode]
+  should = {'train': should_video_train, 'eval': should_video_eval}[mode if 'eval' not in mode else 'eval']
   if should(step):
     logger.video(f'{mode}_policy', ep['image'])
     if should_wdb_video(step) and config.logging.wdb:
@@ -195,6 +196,45 @@ train_driver.on_step(lambda _: step.increment())
 syncfile = None
 if 'metaworld' in config.task:
   syncfile = train_driver._envs[0].syncfile
+def generate_tasks(name, kind):
+  """
+  generate random tasks for iid generalization
+  rotated open/close env
+
+  Args:
+    name: drawer-open | drawer-close
+    kind: monotonic | umbrella
+  """
+  base = np.array([0.02, 0.9 , 0.  , 0.  ])
+  if kind == 'umbrella':
+    high = np.random.randint(135, 221, 24)
+    low = np.random.randint(315, 401, 24) % 360
+    rng = np.concatenate([high, low], 0)
+  if kind == 'monotonic':
+    rng = np.random.randint(0, 236, 48)
+  tasks = []
+  for val in rng:
+    vec = copy(base)
+    vec[-1] = val
+    tasks.append(vec)
+  return {f'{name}-v2': tasks}
+if config.iid_eval:
+  lockfile = syncfile if config.test_tasks_file is None else config.test_tasks_file
+  def env_ctor(**kws):
+    env = make_env(config, 'eval', **kws)
+    params = generate_tasks(config.task.split('_')[-1], 
+      kind='monotonic' if 'monotonic' in config.train_tasks_file else 'umbrella')
+    env.create_tasks(params)
+    return env
+  iid_eval_driver = common.Driver(
+    env_ctor, num_envs=config.num_envs, 
+    mode=parallel, lock=config.num_envs > 1,
+    lockfile=f'{lockfile}_iid',
+  )
+  iid_eval_driver.on_episode(lambda ep: per_episode(ep, mode='iid_eval'))
+else:
+  iid_eval_driver = None
+  
 eval_driver = common.Driver(
   partial(make_env, config, 'eval'), num_envs=config.num_envs, 
   mode=parallel, lock=config.num_envs > 1,
@@ -208,8 +248,12 @@ if prefill:
   random_agent = common.RandomAgent(action_space)
   train_driver(random_agent, steps=prefill, episodes=1)
   eval_driver(random_agent, episodes=1)
+  
   train_driver.reset()
   eval_driver.reset()
+  if config.iid_eval:
+    iid_eval_driver(random_agent, episodes=1)
+    iid_eval_driver.reset()
 
 print('Create agent.')
 train_dataset = iter(train_replay.dataset(**config.dataset))
@@ -284,6 +328,8 @@ while step < config.steps:
     wandb.log({f"eval_openl": wandb.Video(video, fps=30, format="gif")})
   eval_policy = functools.partial(agnt.policy, mode='eval')
   eval_driver(eval_policy, episodes=config.eval_eps)
+  if config.iid_eval:
+    iid_eval_driver(eval_policy, episodes=config.eval_eps)
   print('Start training.')
   train_driver(agnt.policy, steps=config.eval_every)
   agnt.save(logdir / 'variables.pkl')
