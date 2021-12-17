@@ -39,7 +39,7 @@ class RSSM(common.PostPriorNet):
     return state
 
   @tf.function
-  def observe(self, embed, action, state=None):
+  def observe(self, embed, action, state=None, **kws):
     swap = lambda x: tf.transpose(x, [1, 0] + list(range(2, len(x.shape))))
     if state is None:
       state = self.initial(tf.shape(action)[0])
@@ -168,7 +168,7 @@ class Reasoner(RSSM):
     return state
 
   @tf.function
-  def observe(self, post_upd, prior_upd, state=None):
+  def observe(self, post_upd, prior_upd, state=None, **kws):
     swap = lambda x: tf.transpose(x, [1, 0] + list(range(2, len(x.shape))))
     if state is None:
       state = self.initial(tf.shape(prior_upd)[0])
@@ -192,14 +192,14 @@ class Reasoner(RSSM):
     return prior
 
   @tf.function
-  def obs_step(self, prev_state, post_update, curr_state=None, sample=True):
+  def obs_step(self, prev_state, post_update, curr_state=None, task_vec=None, sample=True):
     if curr_state is None:
       curr_state = self.trans_step(prev_state)
     post = self.update_step(curr_state, self._cast(post_update), name='obs', sample=sample)
     return post
 
   @tf.function
-  def img_step(self, prev_state, prior_update, curr_state=None, sample=True):
+  def img_step(self, prev_state, prior_update, curr_state=None, task_vec=None, sample=True):
     if curr_state is None:
       curr_state = self.trans_step(prev_state)
     prior = self.update_step(curr_state, self._cast(prior_update), name='img', sample=sample)
@@ -263,7 +263,7 @@ class DualReasoner(RSSM):
     self.condition_model = common.ConditionModel(**cond_kws)
   
   @tf.function
-  def top_down_step(self, state, obj_emb=None, subj_emb=None, action=None, current_step=None, sample=True):
+  def top_down_step(self, state, obj_emb=None, subj_emb=None, action=None, current_step=None, task_vec=None, sample=True):
     subj_state = state['subj']
     obj_state = state['obj']
     if current_step is not None:
@@ -281,7 +281,7 @@ class DualReasoner(RSSM):
     return {'subj': subj_post, 'obj': obj_post, 'utility': utility}
 
   @tf.function
-  def bottom_up_step(self, state, action, current_step=None, sample=True):
+  def bottom_up_step(self, state, action, current_step=None, task_vec=None, sample=True):
     subj_state = state['subj']
     obj_state = state['obj']
     if current_step is not None:
@@ -294,7 +294,11 @@ class DualReasoner(RSSM):
                                              #curr_state=subj_curr_state, 
                                              sample=sample)
     utility = self.condition_model.imagine(self.subj_reasoner.get_feat(subj_prior), sample=sample)
-    obj_prior = self.obj_reasoner.img_step(prev_state=obj_state, prior_update=self._cast(utility['stoch']), 
+    if task_vec is not None:
+      prior_update = self._cast(tf.concat([utility['stoch'], task_vec], -1))
+    else:
+      prior_update = self._cast(utility['stoch'])
+    obj_prior = self.obj_reasoner.img_step(prev_state=obj_state, prior_update=prior_update, 
                                            curr_state=obj_curr_state, sample=sample)
     return {'subj': subj_prior, 'obj': obj_prior, 'utility': utility}
 
@@ -321,10 +325,10 @@ class DualReasoner(RSSM):
     return {'subj': subj_dist, 'obj': obj_dist, 'utility': util}
 
   @tf.function
-  def obs_step(self, state, action, emb, sample=True):
+  def obs_step(self, state, action, emb, task_vec, sample=True):
     # TODO: do not infer rnn twice
-    prior = self.bottom_up_step(state, action, sample=sample)
-    post = self.top_down_step(state, emb['obj'], emb['subj'], action=action, current_step=prior, sample=sample)
+    prior = self.bottom_up_step(state, action, task_vec=task_vec, sample=sample)
+    post = self.top_down_step(state, emb['obj'], emb['subj'], action=action, current_step=prior, task_vec=task_vec, sample=sample)
     return post, prior
 
   def initial(self, batch_size):
@@ -335,16 +339,21 @@ class DualReasoner(RSSM):
     }
 
   @tf.function
-  def observe(self, emb, actions, state=None):
+  def observe(self, emb, actions, state=None, task_vector=None):
     subj_emb, obj_emb = emb['subj'], emb['obj']
     swap = lambda x: tf.transpose(x, [1, 0] + list(range(2, len(x.shape))))
     if state is None:
       state = self.initial(tf.shape(actions)[0])
     subj_emb, obj_emb, actions = swap(subj_emb), swap(obj_emb), swap(actions)
+    if task_vector is not None:
+      task_vector = swap(task_vector)
     emb = {'obj': obj_emb, 'subj': subj_emb}
+    tpl = (actions, emb)
+    if task_vector is not None:
+      tpl = (actions, emb, task_vector)
     post, prior = common.static_scan(
         lambda prev, inputs: self.obs_step(prev[0], *inputs),
-        (actions, emb), (state, state))
+        tpl, (state, state))
     post = tf.nest.map_structure(swap, post)
     prior = tf.nest.map_structure(swap, prior)
     return post, prior
@@ -361,9 +370,9 @@ class DualReasoner(RSSM):
     return prior
 
   def kl_loss(self, post, prior, **kwargs):
-    subj_loss, subj_value = self.subj_reasoner.kl_loss(post['subj'], prior['subj'], **kwargs)
-    obj_loss, obj_value = self.obj_reasoner.kl_loss(post['obj'], prior['obj'], **kwargs)
-    util_loss, util_value = self.condition_model.kl_loss(post['utility'], prior['utility'], **kwargs)
+    subj_loss, subj_value = self.subj_reasoner.kl_loss(post['subj'], prior['subj'], **kwargs.get('subj', {}))
+    obj_loss, obj_value = self.obj_reasoner.kl_loss(post['obj'], prior['obj'], **kwargs.get('obj', {}))
+    util_loss, util_value = self.condition_model.kl_loss(post['utility'], prior['utility'], **kwargs.get('util', {}))
     loss = {'subj': subj_loss, 'obj': obj_loss, 'util': util_loss}
     value = {'subj': subj_value, 'obj': obj_value, 'util': util_value}
     return loss, value

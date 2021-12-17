@@ -37,7 +37,7 @@ class WorldModel(common.Module):
     print('calling wm loss')
     data = self.preprocess(data)
     embed = self.encoder(data)
-    post, prior = self.rssm.observe(embed, data['action'], state)
+    post, prior = self.rssm.observe(embed, data['action'], state, task_vector=data.get('task_vector', None))
     kl_loss, kl_value = self.rssm.kl_loss(post, prior, **self.config.kl)
     # stoch deter (mean std)/(logit)
     likes = {}
