@@ -87,7 +87,7 @@ defaults:
     num_train_multitask_batches: 2
     num_query_multitask_batches: 2
     query_full_memory: True
-    query: {layers: 0, units: 300, act: elu}
+    query: {layers: 1, units: 300, act: elu}
     key: {layers: 0, units: 300, act: elu}
     temp: 10.
     recalc_latent_freq: 200
@@ -312,7 +312,7 @@ dmc:
 
 dmc_walker:
   logging.exp_name: walker_domain
-  logging.env_name: run
+  logging.env_name: walker
   task: dmc_walker_run
   logdir: $DATA/tmp_noroot/{run_id}
 
