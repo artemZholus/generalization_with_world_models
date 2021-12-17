@@ -132,6 +132,8 @@ class ActorCritic(common.Module):
     print('calling ac train')
     metrics = {}
     hor = self.config.imag_horizon
+    if task_vec is not None:
+      task_vec = task_vec[:, 0]
     with tf.GradientTape() as actor_tape:
       feat, state, action, disc = world_model.imagine(self.actor, start, hor, task_vec=task_vec)
       reward = reward_fn(feat, state, action)
