@@ -202,7 +202,11 @@ class Reasoner(RSSM):
   def img_step(self, prev_state, prior_update, curr_state=None, task_vec=None, sample=True):
     if curr_state is None:
       curr_state = self.trans_step(prev_state)
-    prior = self.update_step(curr_state, self._cast(prior_update), name='img', sample=sample)
+    if task_vec is not None:
+      prior_update = self._cast(tf.concat([prior_update, task_vec], -1))
+    else:
+      prior_update = self._cast(prior_update)
+    prior = self.update_step(curr_state, prior_update, name='img', sample=sample)
     return prior
   
   def update_step(self, curr_state, update, name='', sample=True):
@@ -281,7 +285,7 @@ class DualReasoner(RSSM):
     return {'subj': subj_post, 'obj': obj_post, 'utility': utility}
 
   @tf.function
-  def bottom_up_step(self, state, action, current_step=None, task_vec=None, sample=True):
+  def bottom_up_step(self, state, action, task_vec=None, current_step=None, sample=True):
     subj_state = state['subj']
     obj_state = state['obj']
     if current_step is not None:
@@ -325,7 +329,7 @@ class DualReasoner(RSSM):
     return {'subj': subj_dist, 'obj': obj_dist, 'utility': util}
 
   @tf.function
-  def obs_step(self, state, action, emb, task_vec, sample=True):
+  def obs_step(self, state, action, emb, task_vec=None, sample=True):
     # TODO: do not infer rnn twice
     prior = self.bottom_up_step(state, action, task_vec=task_vec, sample=sample)
     post = self.top_down_step(state, emb['obj'], emb['subj'], action=action, current_step=prior, task_vec=task_vec, sample=sample)
@@ -359,13 +363,18 @@ class DualReasoner(RSSM):
     return post, prior
   
   @tf.function
-  def imagine(self, action, state=None):
+  def imagine(self, action, state=None, task_vec=None):
     swap = lambda x: tf.transpose(x, [1, 0] + list(range(2, len(x.shape))))
     if state is None:
       state = self.initial(tf.shape(action)[0])
     assert isinstance(state, dict), state
     action = swap(action)
-    prior = common.static_scan(self.bottom_up_step, action, state)
+    if task_vec is not None:
+      task_vec = swap(task_vec)
+      tpl = (action, task_vec)
+    else:
+      tpl = (action,)
+    prior = common.static_scan(lambda prev, inp: self.bottom_up_step(prev, *inp), tpl, state)
     prior = tf.nest.map_structure(swap, prior)
     return prior
 

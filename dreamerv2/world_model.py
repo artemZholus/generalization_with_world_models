@@ -69,6 +69,7 @@ class WorldModel(common.Module):
     flatten = lambda x: x.reshape([-1] + list(x.shape[2:]))
     # start = {k: flatten(v) for k, v in start.items()}
     start = tf.nest.map_structure(flatten, start)
+    task_vec = flatten(task_vec)
     def step(prev, _):
       state, _, _ = prev
       feat = self.rssm.get_feat(state, key='policy')
@@ -116,13 +117,20 @@ class WorldModel(common.Module):
     inp = lambda x: x[:6, :5]
     embed = tf.nest.map_structure(inp, embed)
     action = tf.nest.map_structure(inp, data['action'])
-    states, _ = self.rssm.observe(embed, action)
+    if 'task_vector' in data:
+      task_vector = data['task_vector']
+      task_vector = task_vector[:6]
+    else:
+      task_vector = None
+    states, _ = self.rssm.observe(embed, action, task_vector=task_vector)
     feat = self.rssm.get_feat(states, key=img_key)
     recon = self.heads[img_key](feat).mode()[:6]
     
     last = lambda x: x[:, -1]
     init = tf.nest.map_structure(last, states)
-    prior = self.rssm.imagine(data['action'][:6, 5:], init)
+    if task_vector is not None:
+      task_vector = task_vector[:, 5:]
+    prior = self.rssm.imagine(data['action'][:6, 5:], init, task_vec=task_vector)
     feat = self.rssm.get_feat(prior, key=img_key)
     openl = self.heads[img_key](feat).mode()
     model = tf.concat([recon[:, :5] + 0.5, openl + 0.5], 1)

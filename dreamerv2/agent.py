@@ -59,7 +59,7 @@ class Agent(common.Module):
     data = self.wm.preprocess(obs)
     embed = self.wm.encoder(data)
     sample = (mode == 'train') or not self.config.eval_state_mean
-    latent, _ = self.wm.rssm.obs_step(latent, action, embed, sample)
+    latent, _ = self.wm.rssm.obs_step(latent, action, embed, task_vec=obs.get('task_vector'), sample=sample)
     feat = self.wm.rssm.get_feat(latent)
     behaviour = self._task_behavior
     expl_behavour = self._expl_behavior
@@ -132,8 +132,6 @@ class ActorCritic(common.Module):
     print('calling ac train')
     metrics = {}
     hor = self.config.imag_horizon
-    if task_vec is not None:
-      task_vec = task_vec[:, 0]
     with tf.GradientTape() as actor_tape:
       feat, state, action, disc = world_model.imagine(self.actor, start, hor, task_vec=task_vec)
       reward = reward_fn(feat, state, action)
