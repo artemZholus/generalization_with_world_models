@@ -14,6 +14,7 @@ class Agent(common.Module):
     self._logger = logger
     self._action_space = actspce
     self._num_act = actspce.n if hasattr(actspce, 'n') else actspce.shape[0]
+    self.dtype = prec.global_policy().compute_dtype
     self._should_expl = elements.Until(int(
         config.expl_until / config.action_repeat))
     self._counter = step
@@ -59,7 +60,11 @@ class Agent(common.Module):
     data = self.wm.preprocess(obs)
     embed = self.wm.encoder(data)
     sample = (mode == 'train') or not self.config.eval_state_mean
-    latent, _ = self.wm.rssm.obs_step(latent, action, embed, task_vec=obs.get('task_vector'), sample=sample)
+    if 'task_vector' in obs:
+      task_vec = tf.cast(obs['task_vector'], dtype=self.dtype)
+    else:
+      task_vec = None
+    latent, _ = self.wm.rssm.obs_step(latent, action, embed, task_vec=task_vec, sample=sample)
     feat = self.wm.rssm.get_feat(latent)
     behaviour = self._task_behavior
     expl_behavour = self._expl_behavior
