@@ -377,6 +377,14 @@ close_full:
   train_tasks_file: ./rotated_drawer_tasks/close_full_train
   test_tasks_file: ./rotated_drawer_tasks/close_full_test
 
+causal:
+  transparent: True
+  cond_model_size: 32
+  cond_kws.discrete: 16
+  iid_eval: True
+  steps: 4e6
+  world_model: causal
+
 mt10:
   logging.exp_name: mt10
   logging.env_name: mt10
