@@ -87,7 +87,7 @@ class Agent(common.Module):
     if do_wm_step:
       state, outputs, mets = self.wm.train(data, state)
     else:
-      state, outputs, mets = self.wm.wm_loss(data, state)
+      state, outputs = self.wm.observe(data, state)
     if do_wm_step:
       metrics.update(mets)
     start = outputs['post']

@@ -33,6 +33,19 @@ class WorldModel(common.Module):
       _, state, outputs, metrics = self.loss(data, state)
     return state, outputs, metrics
 
+  def observe(self, data, state=None):
+    print('calling wm observe')
+    data = self.preprocess(data)
+    embed = self.encoder(data)
+    post, prior = self.rssm.observe(embed, data['action'], state)
+    feat = self.rssm.get_feat(post)
+    # stoch deter (mean std)/(logit)
+    outs = dict(
+      embed=embed, feat=feat, post=post,
+      prior=prior
+    )
+    return post, outs
+
   def loss(self, data, state=None):
     print('calling wm loss')
     data = self.preprocess(data)
