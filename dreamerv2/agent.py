@@ -50,7 +50,7 @@ class Agent(common.Module):
     tf.py_function(lambda: self.step.assign(
         int(self._counter), read_value=False), [], [])
     if state is None:
-      latent = self.wm.rssm.initial(len(obs['image']))
+      latent = self.wm.rssm.initial(len(obs['image']), prior=False)
       action = tf.zeros((len(obs['image']), self._num_act))
       state = latent, action
     elif obs['reset'].any():

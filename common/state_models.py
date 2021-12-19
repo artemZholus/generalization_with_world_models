@@ -213,7 +213,7 @@ class Reasoner(RSSM):
     state_emb = curr_state['out']
     x = tf.concat([state_emb, update], -1)
     x = self.get(f'{name}_out', tfkl.Dense, self._hidden, self._act)(x)
-    stats = self._suff_stats_layer('{name}_dist', x)
+    stats = self._suff_stats_layer(f'{name}_dist', x)
     dist = self.get_dist(stats)
     stoch = dist.sample() if sample else dist.mode()
     latent = {'stoch': stoch, 'curr_state': curr_state, **stats}
@@ -240,6 +240,158 @@ class Reasoner(RSSM):
       stoch = tf.reshape(stoch, shape)
     return tf.concat([stoch, state['curr_state']['deter']], -1)
 
+class Reasoner2Rnn(RSSM):
+  def __init__(
+      self, stoch=30, deter=200, hidden=200, discrete=False, act=tf.nn.elu,
+      std_act='softplus', min_std=0.1
+    ):
+    super().__init__()
+    self._stoch = stoch
+    self._deter = deter
+    self._hidden = hidden
+    self._discrete = discrete
+    self._act = getattr(tf.nn, act) if isinstance(act, str) else act
+    self._std_act = std_act
+    self._min_std = min_std
+    self.post_cell = common.GRUCell(self._deter, norm=True)
+    self.prio_cell = common.GRUCell(self._deter, norm=True)
+    self._cast = lambda x: tf.cast(x, prec.global_policy().compute_dtype)
+  
+  def initial(self, batch_size, prior=True):
+    dtype = prec.global_policy().compute_dtype
+    key = 'prio' if prior else 'post'
+    if self._discrete:
+      state = {
+          'logit': tf.zeros([batch_size, self._stoch, self._discrete], dtype),
+          'stoch': tf.zeros([batch_size, self._stoch, self._discrete], dtype),
+          f'curr_state_{key}': dict(
+            deter=self._cell.get_initial_state(None, batch_size, dtype),
+            x=tf.zeros([batch_size, self._hidden], dtype)
+          )
+      }
+    else:
+      state = {
+          'mean': tf.zeros([batch_size, self._stoch], dtype),
+          'std': tf.zeros([batch_size, self._stoch], dtype),
+          'stoch': tf.zeros([batch_size, self._stoch], dtype),
+          f'curr_state_{key}': dict(
+            deter=self._cell.get_initial_state(None, batch_size, dtype),
+            x=tf.zeros([batch_size, self._hidden], dtype)
+          ),
+      }
+    return state
+
+  @tf.function
+  def observe(self, post_upd, prior_upd, state=None, **kws):
+    swap = lambda x: tf.transpose(x, [1, 0] + list(range(2, len(x.shape))))
+    if state is None:
+      post_state = self.initial(tf.shape(prior_upd)[0], prior=False)
+      prior_state = self.initial(tf.shape(prior_upd)[0], prior=True)
+    post_upd, prior_upd = swap(post_upd), swap(prior_upd)
+    post, prior = common.static_scan(
+        lambda prev, inputs: self.obs_step(prev[0], *inputs),
+        (prior_upd, post_upd), (post_state, prior_state))
+    post = {k: swap(v) for k, v in post.items()}
+    prior = {k: swap(v) for k, v in prior.items()}
+    return post, prior
+
+  @tf.function
+  def imagine(self, prior_upd, state=None):
+    swap = lambda x: tf.transpose(x, [1, 0] + list(range(2, len(x.shape))))
+    if state is None:
+      state = self.initial(tf.shape(prior_upd)[0])
+    assert isinstance(state, dict), state
+    prior_upd = swap(prior_upd)
+    prior = common.static_scan(self.img_step, prior_upd, state)
+    prior = {k: swap(v) for k, v in prior.items()}
+    return prior
+
+  # @tf.function
+  # def obs_step(self, prev_state, post_update, curr_state=None, task_vec=None, sample=True):
+  #   if curr_state is None:
+  #     curr_state = self.trans_step(prev_state)
+  #   post = self.update_step(curr_state, self._cast(post_update), name='obs', sample=sample)
+  #   return post
+
+  # @tf.function
+  # def img_step(self, prev_state, prior_update, curr_state=None, task_vec=None, sample=True):
+  #   if curr_state is None:
+  #     curr_state = self.trans_step(prev_state)
+  #   if task_vec is not None:
+  #     prior_update = self._cast(tf.concat([prior_update, task_vec], -1))
+  #   else:
+  #     prior_update = self._cast(prior_update)
+  #   prior = self.update_step(curr_state, prior_update, name='img', sample=sample)
+  #   return prior
+  
+  # def update_step(self, curr_state, update, name='', sample=True):
+  #   state_emb = curr_state['out']
+  #   x = tf.concat([state_emb, update], -1)
+  #   x = self.get(f'{name}_out', tfkl.Dense, self._hidden, self._act)(x)
+  #   stats = self._suff_stats_layer(f'{name}_dist', x)
+  #   dist = self.get_dist(stats)
+  #   stoch = dist.sample() if sample else dist.mode()
+  #   latent = {'stoch': stoch, 'curr_state': curr_state, **stats}
+  #   return latent
+
+  @tf.function
+  def obs_step(self, prev_state, post_update, task_vec=None, sample=True):
+    prev_stoch = self._cast(prev_state['stoch'])
+    post_update = self._cast(post_update)
+    if self._discrete:
+      shape = prev_stoch.shape[:-2] + [self._stoch * self._discrete]
+      prev_stoch = tf.reshape(prev_stoch, shape)
+    x = tf.concat([prev_stoch, post_update], -1)
+    x = self.get('obs_in', tfkl.Dense, self._hidden, self._act)(x)
+    deter = prev_state['curr_state_post']['deter']
+    x, deter = self.post_cell(x, [deter])
+    deter = deter[0]  # Keras wraps the state in a list.
+    x = self.get('obs_out', tfkl.Dense, self._hidden, self._act)(x)
+    stats = self._suff_stats_layer('obs_dist', x)
+    dist = self.get_dist(stats)
+    stoch = dist.sample() if sample else dist.mode()
+    curr_state = {'out': x, 'deter': deter}
+    latent = {'stoch': stoch, 'curr_state_post': curr_state, **stats}
+    return latent
+  
+  @tf.function
+  def img_step(self, prev_state, prior_update, task_vec=None, sample=True):
+    prev_stoch = self._cast(prev_state['stoch'])
+    if task_vec is not None:
+      prior_update = self._cast(tf.concat([prior_update, task_vec], -1))
+    else:
+      prior_update = self._cast(prior_update)
+    if self._discrete:
+      shape = prev_stoch.shape[:-2] + [self._stoch * self._discrete]
+      prev_stoch = tf.reshape(prev_stoch, shape)
+    x = tf.concat([prev_stoch, prior_update], -1)
+    x = self.get('img_in', tfkl.Dense, self._hidden, self._act)(x)
+    if 'curr_state_post' in prev_state:
+      # use posterior rnn state for inference
+      deter = prev_state['curr_state_post']['deter']
+    elif 'curr_state_prio' in prev_state:
+      # use prior states for imagination
+      deter = prev_state['curr_state_prio']['deter']
+    x, deter = self.prio_cell(x, [deter])
+    deter = deter[0]  # Keras wraps the state in a list.
+    x = self.get('img_out', tfkl.Dense, self._hidden, self._act)(x)
+    stats = self._suff_stats_layer('img_dist', x)
+    dist = self.get_dist(stats)
+    stoch = dist.sample() if sample else dist.mode()
+    curr_state = {'out': x, 'deter': deter}
+    latent = {'stoch': stoch, 'curr_state_prio': curr_state, **stats}
+    return latent
+
+  def get_feat(self, state):
+    stoch = self._cast(state['stoch'])
+    if self._discrete:
+      shape = stoch.shape[:-2] + [self._stoch * self._discrete]
+      stoch = tf.reshape(stoch, shape)
+    if 'curr_state_post' in state:
+      return tf.concat([stoch, state['curr_state_post']['deter']], -1)
+    elif 'curr_state_prio' in state:
+      return tf.concat([stoch, state['curr_state_prio']['deter']], -1)
+
 
 class DualReasoner(RSSM):
   def __init__(
@@ -254,7 +406,7 @@ class DualReasoner(RSSM):
     self._std_act = std_act
     self._min_std = min_std
     self._cast = lambda x: tf.cast(x, prec.global_policy().compute_dtype)
-    self.obj_reasoner = Reasoner(stoch=stoch, deter=deter, hidden=hidden, discrete=discrete, act=act, std_act=std_act, min_std=min_std)
+    self.obj_reasoner = Reasoner2Rnn(stoch=stoch, deter=deter, hidden=hidden, discrete=discrete, act=act, std_act=std_act, min_std=min_std)
     # self.subj_reasoner = Reasoner(stoch=stoch, deter=deter, hidden=hidden, discrete=discrete, act=act, std_act=std_act, min_std=min_std)
     self.subj_reasoner = RSSM(stoch=stoch, deter=deter, hidden=hidden, discrete=discrete, act=act, std_act=std_act, min_std=min_std)
     if cond_kws is None:
@@ -272,11 +424,13 @@ class DualReasoner(RSSM):
     obj_state = state['obj']
     if current_step is not None:
       subj_curr_state = current_step['subj'].get('curr_state', None)
-      obj_curr_state = current_step['obj']['curr_state']
+      obj_curr_state = current_step['obj'].get('curr_state', None)
     else:
       subj_curr_state = None
       obj_curr_state = None
-    obj_post = self.obj_reasoner.obs_step(prev_state=obj_state, post_update=obj_emb, curr_state=subj_curr_state, sample=sample)
+    obj_post = self.obj_reasoner.obs_step(prev_state=obj_state, post_update=obj_emb, 
+                                          # curr_state=subj_curr_state, 
+                                          sample=sample)
     utility = self.condition_model.observe(self.obj_reasoner.get_feat(obj_post), sample=sample)
     post_update = tf.concat([self._cast(utility['stoch']), subj_emb], -1)
     subj_post, _ = self.subj_reasoner.obs_step(
@@ -305,7 +459,8 @@ class DualReasoner(RSSM):
     else:
       prior_update = self._cast(utility['stoch'])
     obj_prior = self.obj_reasoner.img_step(prev_state=obj_state, prior_update=prior_update, 
-                                           curr_state=obj_curr_state, sample=sample)
+                                           # curr_state=obj_curr_state, 
+                                           sample=sample)
     return {'subj': subj_prior, 'obj': obj_prior, 'utility': utility}
 
   @tf.function
@@ -337,9 +492,9 @@ class DualReasoner(RSSM):
     post = self.top_down_step(state, emb['obj'], emb['subj'], action=action, current_step=prior, task_vec=task_vec, sample=sample)
     return post, prior
 
-  def initial(self, batch_size):
+  def initial(self, batch_size, prior=True):
     return {
-      'obj': self.obj_reasoner.initial(batch_size),
+      'obj': self.obj_reasoner.initial(batch_size, prior=prior),
       'subj': self.subj_reasoner.initial(batch_size),
       'utility': self.condition_model.initial(batch_size)
     }
@@ -349,7 +504,8 @@ class DualReasoner(RSSM):
     subj_emb, obj_emb = emb['subj'], emb['obj']
     swap = lambda x: tf.transpose(x, [1, 0] + list(range(2, len(x.shape))))
     if state is None:
-      state = self.initial(tf.shape(actions)[0])
+      post_state = self.initial(tf.shape(actions)[0], prior=False)
+      prior_state = self.initial(tf.shape(actions)[0], prior=True)
     subj_emb, obj_emb, actions = swap(subj_emb), swap(obj_emb), swap(actions)
     if task_vector is not None:
       task_vector = swap(task_vector)
@@ -359,7 +515,7 @@ class DualReasoner(RSSM):
       tpl = (actions, emb, task_vector)
     post, prior = common.static_scan(
         lambda prev, inputs: self.obs_step(prev[0], *inputs),
-        tpl, (state, state))
+        tpl, (post_state, prior_state))
     post = tf.nest.map_structure(swap, post)
     prior = tf.nest.map_structure(swap, prior)
     return post, prior
