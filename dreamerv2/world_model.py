@@ -37,7 +37,7 @@ class WorldModel(common.Module):
     print('calling wm observe')
     data = self.preprocess(data)
     embed = self.encoder(data)
-    post, prior = self.rssm.observe(embed, data['action'], state)
+    post, prior = self.rssm.observe(embed, data['action'], state, task_vector=data.get('task_vector', None))
     feat = self.rssm.get_feat(post)
     # stoch deter (mean std)/(logit)
     outs = dict(
