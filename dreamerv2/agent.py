@@ -65,7 +65,7 @@ class Agent(common.Module):
     else:
       task_vec = None
     latent, _ = self.wm.rssm.obs_step(latent, action, embed, task_vec=task_vec, sample=sample)
-    feat = self.wm.rssm.get_feat(latent)
+    feat = self.wm.rssm.get_feat(latent, key='policy')
     behaviour = self._task_behavior
     expl_behavour = self._expl_behavior
     if second_agent:
@@ -138,12 +138,12 @@ class ActorCritic(common.Module):
     metrics = {}
     hor = self.config.imag_horizon
     with tf.GradientTape() as actor_tape:
-      feat, state, action, disc = world_model.imagine(self.actor, start, hor, task_vec=task_vec)
-      reward = reward_fn(feat, state, action)
-      target, weight, mets1 = self.target(feat, action, reward, disc)
-      actor_loss, mets2 = self.actor_loss(feat, action, target, weight)
+      pfeat, rfeat, state, action, disc = world_model.imagine(self.actor, start, hor, task_vec=task_vec)
+      reward = reward_fn(rfeat, state, action)
+      target, weight, mets1 = self.target(pfeat, action, reward, disc)
+      actor_loss, mets2 = self.actor_loss(pfeat, action, target, weight)
     with tf.GradientTape() as critic_tape:
-      critic_loss, mets3 = self.critic_loss(feat, action, target, weight)
+      critic_loss, mets3 = self.critic_loss(pfeat, action, target, weight)
     metrics.update(self.actor_opt(actor_tape, actor_loss, self.actor))
     metrics.update(self.critic_opt(critic_tape, critic_loss, self.critic))
     metrics.update(**mets1, **mets2, **mets3)
