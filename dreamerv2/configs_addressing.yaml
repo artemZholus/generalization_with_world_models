@@ -318,8 +318,20 @@ dmc_walker:
 
 dmc_hopper:
   logging.exp_name: hopper_domain
-  logging.env_name: hop
+  logging.env_name: hopper
   task: dmc_hopper_hop
+  logdir: $DATA/tmp_noroot/{run_id}
+
+dmc_finger:
+  logging.exp_name: finger_domain
+  logging.env_name: finger
+  task: dmc_finger_spin
+  logdir: $DATA/tmp_noroot/{run_id}
+
+dmc_acrobot:
+  logging.exp_name: acrobot_domain
+  logging.env_name: swingup
+  task: dmc_acrobot_swingup
   logdir: $DATA/tmp_noroot/{run_id}
 
 debug:
