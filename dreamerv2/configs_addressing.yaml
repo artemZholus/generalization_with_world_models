@@ -40,6 +40,8 @@ defaults:
   eval_noise: 0.0
   eval_state_mean: False
   agent_path: none
+  wm_path: none
+  ac_path: none
 
   # World Model
   world_model: dreamer
