@@ -37,7 +37,7 @@ class WorldModel(common.Module):
     print('calling wm observe')
     data = self.preprocess(data)
     embed = self.encoder(data)
-    post, prior = self.rssm.observe(embed, data['action'], state)
+    post, prior = self.rssm.observe(embed, data['action'], state, task_vector=data.get('task_vector', None))
     feat = self.rssm.get_feat(post)
     # stoch deter (mean std)/(logit)
     outs = dict(
@@ -84,21 +84,23 @@ class WorldModel(common.Module):
     start = tf.nest.map_structure(flatten, start)
     task_vec = flatten(task_vec)
     def step(prev, _):
-      state, _, _ = prev
-      feat = self.rssm.get_feat(state, key='policy')
-      action = policy(tf.stop_gradient(feat)).sample()
+      state, _, _, _ = prev
+      pfeat = self.rssm.get_feat(state, key='policy')
+      rfeat = self.rssm.get_feat(state)
+      action = policy(tf.stop_gradient(pfeat)).sample()
       succ = self.rssm.img_step(state, action, task_vec=task_vec)
-      return succ, feat, action
-    feat = 0 * self.rssm.get_feat(start, key='policy')
-    action = policy(feat).mode()
-    succs, feats, actions = common.static_scan(
-        step, tf.range(horizon), (start, feat, action))
+      return succ, pfeat, rfeat, action
+    pfeat = 0 * self.rssm.get_feat(start, key='policy')
+    rfeat = 0 * self.rssm.get_feat(start)
+    action = policy(pfeat).mode()
+    succs, pfeats, rfeats, actions = common.static_scan(
+        step, tf.range(horizon), (start, pfeat, rfeat, action))
     states = succs
     if 'discount' in self.heads:
-      discount = self.heads['discount'](feats).mean()
+      discount = self.heads['discount'](rfeats).mean()
     else:
-      discount = self.config.discount * tf.ones_like(feats[..., 0])
-    return feats, states, actions, discount
+      discount = self.config.discount * tf.ones_like(pfeats[..., 0])
+    return pfeats, rfeats, states, actions, discount
   
   @tf.function
   def preprocess(self, obs):
@@ -340,7 +342,7 @@ class CausalWorldModel(WorldModel):
   def __init__(self, step, config):
     super().__init__(step, config)
     shape = config.image_size + (config.img_channels,)
-    self.rssm = common.DualReasoner(**config.rssm, cond_stoch=config.cond_model_size)
+    self.rssm = common.DualReasoner(**config.rssm, cond_stoch=config.cond_model_size, policy_feats=config.policy_feats)
     self.encoder = common.DualConvEncoder(config.subj_encoder, config.obj_encoder)
     self.heads['subj_image'] = common.ConvDecoder(shape, **config.decoder)
     self.heads['obj_image'] = common.ConvDecoder(shape, **config.decoder)

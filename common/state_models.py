@@ -396,7 +396,7 @@ class Reasoner2Rnn(RSSM):
 class DualReasoner(RSSM):
   def __init__(
     self, stoch=30, cond_stoch=50, deter=200, hidden=200, discrete=False, act=tf.nn.elu,
-    std_act='softplus', min_std=0.1, cond_kws=None
+    std_act='softplus', min_std=0.1, cond_kws=None, policy_feats=None
   ):
     self._stoch = stoch
     self._deter = deter
@@ -405,6 +405,7 @@ class DualReasoner(RSSM):
     self._act = getattr(tf.nn, act) if isinstance(act, str) else act
     self._std_act = std_act
     self._min_std = min_std
+    self.policy_feats = [] if policy_feats is None else policy_feats
     self._cast = lambda x: tf.cast(x, prec.global_policy().compute_dtype)
     self.obj_reasoner = Reasoner2Rnn(stoch=stoch, deter=deter, hidden=hidden, discrete=discrete, act=act, std_act=std_act, min_std=min_std)
     # self.subj_reasoner = Reasoner(stoch=stoch, deter=deter, hidden=hidden, discrete=discrete, act=act, std_act=std_act, min_std=min_std)
@@ -478,6 +479,17 @@ class DualReasoner(RSSM):
     elif key is not None and 'obj' in key:
       obj_feat = self.obj_reasoner.get_feat(state['obj'])
       return obj_feat
+    elif key is not None and 'policy' in key:
+      features = []
+      for feat in self.policy_feats:
+        if feat == 'subj':
+          feat_vec = self.subj_reasoner.get_feat(state['subj'])
+        elif feat == 'obj':
+          feat_vec = self.obj_reasoner.get_feat(state['obj'])
+        elif feat == 'utility':
+          feat_vec = self._cast(state['utility']['stoch'])
+        features.append(feat_vec)
+      return tf.concat(features, -1)
     else:
       subj_feat = self.subj_reasoner.get_feat(state['subj'])
       obj_feat = self.obj_reasoner.get_feat(state['obj'])
@@ -543,9 +555,14 @@ class DualReasoner(RSSM):
   def kl_loss(self, post, prior, **kwargs):
     subj_loss, subj_value = self.subj_reasoner.kl_loss(post['subj'], prior['subj'], **kwargs.get('subj', {}))
     obj_loss, obj_value = self.obj_reasoner.kl_loss(post['obj'], prior['obj'], **kwargs.get('obj', {}))
+    deter_kl = ((
+      post['obj']['curr_state_post']['deter'] - 
+      prior['obj']['curr_state_prio']['deter']
+    ) ** 2).sum(-1).mean()
+    deter_kl = tf.cast(deter_kl, tf.float32)
     util_loss, util_value = self.condition_model.kl_loss(post['utility'], prior['utility'], **kwargs.get('util', {}))
-    loss = {'subj': subj_loss, 'obj': obj_loss, 'util': util_loss}
-    value = {'subj': subj_value, 'obj': obj_value, 'util': util_value}
+    loss = {'subj': subj_loss, 'obj': obj_loss, 'obj_deter': deter_kl, 'util': util_loss}
+    value = {'subj': subj_value, 'obj': obj_value, 'obj_deter': deter_kl, 'util': util_value}
     return loss, value
 
 

@@ -288,10 +288,14 @@ elif config.multitask.mode == 'addressing':
 elif config.multitask.mode == 'addressing_dyne':
   batch_proposal = proposal.DyneRetrospectiveAddressing(config, agnt, step, train_dataset, mt_replay, trainer.dyne_encoder)
 print('Agent created')
-if (logdir / 'variables.pkl').exists() or config.agent_path != 'none':
-  if config.agent_path == 'none':
+if (logdir / 'variables.pkl').exists() or config.agent_path != 'none' or config.wm_path != 'none' or config.ac_path != 'none':
+  if config.wm_path != 'none':
+    agnt.wm.load(config.wm_path)
+  if config.ac_path != 'none':
+    agnt._task_behavior.load(config.ac_path)
+  if config.ac_path == 'none' and config.wm_path == 'none' and config.agent_path == 'none':
     agnt.load(logdir / 'variables.pkl')
-  else:
+  elif config.ac_path == 'none' and config.wm_path == 'none':
     agnt.load(config.agent_path)
     common.tfutils.reset_model(agnt._task_behavior)
 else:
@@ -342,8 +346,9 @@ while step < config.steps:
   print('Start training.')
   train_driver(agnt.policy, steps=config.eval_every)
   agnt.save(logdir / 'variables.pkl')
-for env in train_envs + eval_envs:
-  try:
-    env.close()
-  except Exception:
-    pass
+exit(0)
+#for env in train_envs + eval_envs:
+#  try:
+#    env.close()
+#  except Exception:
+#    pass
