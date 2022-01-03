@@ -551,9 +551,14 @@ class DualReasoner(RSSM):
   def kl_loss(self, post, prior, **kwargs):
     subj_loss, subj_value = self.subj_reasoner.kl_loss(post['subj'], prior['subj'], **kwargs.get('subj', {}))
     obj_loss, obj_value = self.obj_reasoner.kl_loss(post['obj'], prior['obj'], **kwargs.get('obj', {}))
+    deter_kl = ((
+      post['obj']['curr_state_post']['deter'] - 
+      prior['obj']['curr_state_prio']['deter']
+    ) ** 2).sum(-1).mean()
+    deter_kl = tf.cast(deter_kl, tf.float32)
     util_loss, util_value = self.condition_model.kl_loss(post['utility'], prior['utility'], **kwargs.get('util', {}))
-    loss = {'subj': subj_loss, 'obj': obj_loss, 'util': util_loss}
-    value = {'subj': subj_value, 'obj': obj_value, 'util': util_value}
+    loss = {'subj': subj_loss, 'obj': obj_loss, 'obj_deter': deter_kl, 'util': util_loss}
+    value = {'subj': subj_value, 'obj': obj_value, 'obj_deter': deter_kl, 'util': util_value}
     return loss, value
 
 
