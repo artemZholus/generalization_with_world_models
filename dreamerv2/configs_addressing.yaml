@@ -92,7 +92,7 @@ defaults:
   slow_target_update: 100
   slow_target_fraction: 1
 
-  policy_feats: [utility, obj]
+  policy_feats: [subj, utility, obj]
 
   zero_shot_agent:
     enabled: False
