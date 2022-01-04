@@ -77,7 +77,9 @@ class CausalWorld:
                                   normalize_observations=False,
                                   normalize_actions=False,
                                   initialize_all_clients=False,
+                                  skip_frame=3,
                                   camera_indicies=[0, 1],
+                                  action_mode='end_effector_positions',
                                   observation_mode=observation_mode)
     if randomize_envs:
       self._env.sample_new_goal()

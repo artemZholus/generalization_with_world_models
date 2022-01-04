@@ -318,9 +318,9 @@ causal:
 
   task: causal_pushing
   img_channels: 6
-  num_envs: 10
+  num_envs: 20
   env_params: "{offscreen: True, randomize_tasks: False, randomize_envs: True, observation_mode: structured}"
-  time_limit: 250
+  time_limit: 500
   action_repeat: 1
   eval_every: 1e4
   log_every: 1e3
