@@ -91,6 +91,7 @@ if config.precision == 16:
   prec.set_policy(prec.Policy('mixed_float16'))
 
 print('Logdir', logdir)
+prefill_replay = common.Replay(logdir / 'prefill_replay', config.time_limit, **config.replay)
 train_replay = common.Replay(logdir / 'train_replay', config.replay_size, **config.replay)
 eval_replay = common.Replay(logdir / 'eval_replay', config.time_limit or 1, **config.replay)
 # if config.multitask.mode != 'none':
@@ -106,14 +107,14 @@ outputs = [
     # elements.TensorBoardOutput(logdir),
 ]
 logger = elements.Logger(step, outputs, multiplier=config.action_repeat)
-metrics = collections.defaultdict(list)
-should_train = elements.Every(config.train_every)
-should_train_zero_shot = elements.Every(config.zero_shot_agent.train_every)
-should_log = elements.Every(config.log_every)
+# metrics = collections.defaultdict(list)
+# should_train = elements.Every(config.train_every)
+# should_train_zero_shot = elements.Every(config.zero_shot_agent.train_every)
+# should_log = elements.Every(config.log_every)
 should_video_train = elements.Every(config.eval_every)
 should_video_eval = elements.Every(config.eval_every)
-should_wdb_video = elements.Every(config.eval_every * 5)
-should_openl_video = elements.Every(config.eval_every * 5)
+# should_wdb_video = elements.Every(config.eval_every * 5)
+# should_openl_video = elements.Every(config.eval_every * 5)
 
 def make_env(config, mode, **kws):
   suite, task = config.task.split('_', 1)
@@ -152,7 +153,7 @@ def per_episode(ep, mode):
     task_name = ep['task_name'][0]
   score = float(ep['reward'].astype(np.float64).sum())
   print(f'{mode.title()} episode has {length} steps and return {score:.1f}.')
-  replay_ = dict(train=train_replay, eval=eval_replay)[mode]
+  replay_ = dict(prefill=prefill_replay, train=train_replay, eval=eval_replay)[mode]
   if not freezed_replay:
     ep_file = replay_.add(ep)
   logger.scalar(f'{mode}_transitions', replay_.num_transitions)
@@ -171,7 +172,7 @@ def per_episode(ep, mode):
   }
   # if config.logging.wdb:
   #   wandb.log(summ)
-  should = {'train': should_video_train, 'eval': should_video_eval}[mode]
+  should = {'prefill': lambda x: False, 'train': should_video_train, 'eval': should_video_eval}[mode]
   if should(step):
     logger.video(f'{mode}_policy', ep['image'])
     # if should_wdb_video(step) and config.logging.wdb:
@@ -202,6 +203,21 @@ print('Create envs.')
 dummy_env = make_env(config, 'train')
 action_space = dummy_env.action_space['action']
 parallel = 'process' if config.parallel else 'local'
+prefill_driver = common.Driver(
+  partial(make_env, config, 'train'), num_envs=config.num_envs, 
+  mode=parallel, lock=False, lockfile=config.train_tasks_file,
+)
+task_vec = None
+for env in prefill_driver._envs:
+  env.randomize_tasks = False
+  if task_vec is None:
+    task_vec = env.get_task_vector()
+prefill_driver.on_episode(lambda ep: per_episode(ep, mode='prefill'))
+prefill_driver.on_step(lambda _: step.increment())
+syncfile = None
+if 'metaworld' in config.task:
+  syncfile = prefill_driver._envs[0].syncfile
+
 train_driver = common.Driver(
   partial(make_env, config, 'train'), num_envs=config.num_envs, 
   mode=parallel, lock=config.num_envs > 1, lockfile=config.train_tasks_file,
@@ -212,7 +228,6 @@ for env in train_driver._envs:
   if task_vec is None:
     task_vec = env.get_task_vector()
 train_driver.on_episode(lambda ep: per_episode(ep, mode='train'))
-train_driver.on_step(lambda _: step.increment())
 syncfile = None
 if 'metaworld' in config.task:
   syncfile = train_driver._envs[0].syncfile
@@ -225,26 +240,31 @@ for env in eval_driver._envs:
   env.randomize_tasks = False
 eval_driver.on_episode(lambda ep: per_episode(ep, mode='eval'))
 
-prefill = max(0, config.prefill - train_replay.total_steps)
+prefill = max(0, config.prefill - prefill_replay.total_steps)
 if prefill:
   print(f'Prefill dataset ({prefill} steps).')
   random_agent = common.RandomAgent(action_space)
-  train_driver(random_agent, steps=prefill, episodes=1)
-  eval_driver(random_agent, episodes=1)
-  train_driver.reset()
-  eval_driver.reset()
+  prefill_driver(random_agent, steps=prefill, episodes=1)
+  prefill_driver.reset()
+prefill_dataset = iter(train_replay.dataset(**config.dataset))
 freezed_replay = True
 print('Create agent.')
-train_dataset = iter(train_replay.dataset(**config.dataset))
-# eval_dataset = iter(eval_replay.dataset(**config.dataset))
 
-agnt = agent.Agent(config, logger, action_space, step, train_dataset)
+agnt = agent.Agent(config, logger, action_space, step, prefill_dataset)
 print('Agent created')
 if (logdir / 'variables.pkl').exists():
   print('Restoring trained agent')
   agnt.load(logdir / 'variables.pkl')
 else:
   assert False, 'saved agent not found'
+
+freezed_replay=False
+
+eval_policy = functools.partial(agnt.policy, mode='eval')
+train_driver(eval_policy, steps=200000, episodes=1)
+eval_driver(eval_policy, steps=20000, episodes=1)
+train_dataset = iter(train_replay.dataset(**config.dataset))
+eval_dataset = iter(eval_replay.dataset(**config.dataset))
 
 # from collections import defaultdict
 # eval_policy = functools.partial(agnt.policy, mode='eval')

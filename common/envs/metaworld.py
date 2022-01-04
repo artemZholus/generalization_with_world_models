@@ -189,21 +189,21 @@ class MetaWorld:
     print(f'sync file: {syncfile}')
     with NullContext() if syncfile is None else FileLock(syncfile):
       if syncfile is not None:
-          path = f'{syncfile}.data'
-          if not os.path.exists(path):
-            with open(path, 'wb') as f:
-              pickle.dump(self.env_tasks, f)
-          else:
-            with open(path, 'rb') as f:
-              self.env_tasks = pickle.load(f)
-            for name in self.envs_cls.keys():
-              env = self.envs_cls[name]
-              tasks, task_id = self.env_tasks[name]
-              self.task_id[name] = task_id
-              env.set_task(tasks[task_id])
-              if transparent:
-                self.tr_envs_cls[name].call('set_task', tasks[task_id])()
-            self._tasks = self.env_tasks[self._curr_env][0]
+        path = f'{syncfile}.data'
+        if not os.path.exists(path):
+          with open(path, 'wb') as f:
+            pickle.dump(self.env_tasks, f)
+        else:
+          with open(path, 'rb') as f:
+            self.env_tasks = pickle.load(f)
+          for name in self.envs_cls.keys():
+            env = self.envs_cls[name]
+            tasks, task_id = self.env_tasks[name]
+            self.task_id[name] = task_id
+            env.set_task(tasks[task_id])
+            if transparent:
+              self.tr_envs_cls[name].call('set_task', tasks[task_id])()
+          self._tasks = self.env_tasks[self._curr_env][0]
     self.domain = domain
 
     self._action_repeat = action_repeat

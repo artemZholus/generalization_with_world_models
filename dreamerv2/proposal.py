@@ -13,7 +13,7 @@ import time
 import math
 
 
-class TrainProposal:
+class TrainProposal(common.Module):
     def __init__(self, config, agnt, step, dataset):
       self.wm = agnt.wm
       self.ac = agnt._task_behavior
@@ -318,7 +318,7 @@ class RetrospectiveAddressing(RawMultitask):
         metrics.update(selection_metrics)
     if metrics is not None:
       metrics.update(mets)
-    return batch, not agent_only
+    return batch, not agent_only, True
 
   def task_reward(self, observations, actions, reduce=True):
     post, _ = self.wm.rssm.observe(observations, actions)
