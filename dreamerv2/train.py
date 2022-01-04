@@ -100,6 +100,7 @@ should_video_train = elements.Every(config.eval_every)
 should_video_eval = elements.Every(config.eval_every)
 should_wdb_video = elements.Every(config.eval_every * 5)
 should_openl_video = elements.Every(config.eval_every * 5)
+should_save = elements.Every(config.eval_every)
 
 def make_env(config, mode, **kws):
   suite, task = config.task.split('_', 1)
@@ -182,21 +183,8 @@ def per_episode(ep, mode):
   logger.write()
 
 print('Create envs.')
-# train_envs = [make_env(config, 'train') for _ in range(config.num_envs)]
-# eval_envs = [make_env(config, 'eval') for _ in range(config.num_envs)]
-dummy_env = make_env(config, 'train')
-action_space = dummy_env.action_space['action']
-parallel = 'process' if config.parallel else 'local'
-train_driver = common.Driver(
-  partial(make_env, config, 'train'), num_envs=config.num_envs, 
-  mode=parallel, lock=config.num_envs > 1, lockfile=config.train_tasks_file,
-)
-train_driver.on_episode(lambda ep: per_episode(ep, mode='train'))
-train_driver.on_step(lambda _: step.increment())
-syncfile = None
-if 'metaworld' in config.task:
-  syncfile = train_driver._envs[0].syncfile
-def generate_tasks(name, kind):
+
+def generate_tasks(name, kind, num):
   """
   generate random tasks for iid generalization
   rotated open/close env
@@ -207,27 +195,41 @@ def generate_tasks(name, kind):
   """
   base = np.array([0.02, 0.9 , 0.  , 0.  ])
   if kind == 'umbrella':
-    high = np.random.randint(135, 221, 24)
-    low = np.random.randint(315, 401, 24) % 360
+    high = np.random.randint(135, 221, num//2)
+    low = np.random.randint(315, 401, num//2) % 360
     rng = np.concatenate([high, low], 0)
   if kind == 'monotonic':
-    rng = np.random.randint(0, 236, 48)
+    rng = np.random.randint(0, 236, num)
   tasks = []
   for val in rng:
+    print(val)
     vec = copy(base)
     vec[-1] = val
     tasks.append(vec)
   return {f'{name}-v2': tasks}
-if config.iid_eval:
-  lockfile = syncfile if config.test_tasks_file is None else config.test_tasks_file
-  def env_ctor(**kws):
-    env = make_env(config, 'eval', **kws)
+
+def env_ctor(mode, num, **kws):
+    env = make_env(config, mode, **kws)
     params = generate_tasks(config.task.split('_')[-1], 
-      kind='monotonic' if 'monotonic' in config.train_tasks_file else 'umbrella')
+      kind='monotonic' if 'monotonic' in config.train_tasks_file else 'umbrella',
+      num=num)
     env.create_tasks(params)
     return env
+
+dummy_env = make_env(config, 'train')
+action_space = dummy_env.action_space['action']
+parallel = 'process' if config.parallel else 'local'
+train_driver = common.Driver(
+  partial(env_ctor, 'train', config.num_envs), num_envs=config.num_envs, 
+  mode=parallel, lock=config.num_envs > 1, lockfile=config.train_tasks_file,
+)
+train_driver.on_episode(lambda ep: per_episode(ep, mode='train'))
+train_driver.on_step(lambda _: step.increment())
+
+if config.iid_eval:
+  lockfile = config.train_tasks_file if config.test_tasks_file is None else config.test_tasks_file
   iid_eval_driver = common.Driver(
-    env_ctor, num_envs=config.num_envs, 
+    partial(env_ctor, 'eval', 48), num_envs=config.num_envs, 
     mode=parallel, lock=config.num_envs > 1,
     lockfile=f'{lockfile}_iid',
   )
@@ -238,7 +240,7 @@ else:
 eval_driver = common.Driver(
   partial(make_env, config, 'eval'), num_envs=config.num_envs, 
   mode=parallel, lock=config.num_envs > 1,
-  lockfile=syncfile if config.test_tasks_file is None else config.test_tasks_file,
+  lockfile=config.train_tasks_file if config.test_tasks_file is None else config.test_tasks_file,
 )
 eval_driver.on_episode(lambda ep: per_episode(ep, mode='eval'))
 
@@ -332,7 +334,9 @@ while step < config.steps:
     iid_eval_driver(eval_policy, episodes=config.eval_eps)
   print('Start training.')
   train_driver(agnt.policy, steps=config.eval_every)
-  agnt.save(logdir / 'variables.pkl')
+  if should_save(step):
+    agnt.save(logdir / 'variables.pkl')
+    batch_proposal.save(logdir / 'addressing.pkl')
 for env in train_envs + eval_envs:
   try:
     env.close()
