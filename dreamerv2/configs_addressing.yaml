@@ -335,6 +335,12 @@ dmc_acrobot:
   task: dmc_acrobot_swingup
   logdir: $DATA/tmp_noroot/{run_id}
 
+dmc_quadruped:
+  logging.exp_name: quadruped_domain
+  logging.env_name: run
+  task: dmc_quadruped_run
+  logdir: $DATA/tmp_noroot/{run_id}
+
 debug:
 
   jit: False
