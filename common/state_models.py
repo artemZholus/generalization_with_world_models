@@ -453,6 +453,7 @@ class DualReasoner(RSSM):
                                              #curr_state=subj_curr_state, 
                                              sample=sample)
     ustate = self.subj_reasoner.get_feat(subj_prior)
+    ustate = tf.stop_gradient(ustate)
     if task_vec is not None:
       task_vec = self._cast(task_vec)
       ustate = tf.concat([ustate, task_vec], -1)
