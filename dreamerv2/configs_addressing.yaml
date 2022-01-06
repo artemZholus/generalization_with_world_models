@@ -341,6 +341,12 @@ dmc_quadruped:
   task: dmc_quadruped_run
   logdir: $DATA/tmp_noroot/{run_id}
 
+dmc_reacher:
+  logging.exp_name: reacher_domain
+  logging.env_name: hard
+  task: dmc_reacher_hard
+  logdir: $DATA/tmp_noroot/{run_id}
+
 debug:
 
   jit: False
