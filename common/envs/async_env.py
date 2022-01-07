@@ -88,7 +88,7 @@ class Async(object):
 
   def _worker(self, constructor, conn):
     try:
-      t = random.random()
+      t = random.random() * 5
       time.sleep(t)
       env = constructor()
       while True:
