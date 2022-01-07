@@ -186,9 +186,34 @@ print('Create envs.')
 # eval_envs = [make_env(config, 'eval') for _ in range(config.num_envs)]
 dummy_env = make_env(config, 'train')
 action_space = dummy_env.action_space['action']
+def iter_tasks(kind):
+  base = np.array([0.02, 0.9 , 0.  , 0.  ])
+  while True:
+    if kind == 'umbrella':
+      if np.random.rand() > 0.5:
+        angle = np.random.randint(135, 221)
+      else:
+        angle = np.random.randint(315, 401) % 360
+    elif kind == 'monotonic':
+      angle = np.random.randint(0, 236)
+    elif kind == 'full':
+      angle = np.random.randint(0, 361)
+    else:
+      raise ValueError(f'Unsupported kind: {kind}')
+    print(f'next angle: {angle}')
+    vec = copy(base)
+    vec[-1] = angle
+    yield vec
+
+def procedural_env_ctor(mode, **kws):
+  env = make_env(config, mode, **kws)
+  env.set_tasks_generator(
+    iter(iter_tasks(kind='monotonic' if 'monotonic' in config.train_tasks_file else 'umbrella'))
+  )
+  return env
 parallel = 'process' if config.parallel else 'local'
 train_driver = common.Driver(
-  partial(make_env, config, 'train'), num_envs=config.num_envs,
+  partial(procedural_env_ctor, 'train'), num_envs=config.num_envs,
   mode=parallel, lock=config.num_envs > 1, lockfile=config.train_tasks_file,
 )
 train_driver.on_episode(lambda ep: per_episode(ep, mode='train'))
@@ -223,31 +248,6 @@ def generate_tasks(name, kind):
     tasks.append(vec)
   return {f'{name}-v2': tasks}
 
-def iter_tasks(kind):
-  base = np.array([0.02, 0.9 , 0.  , 0.  ])
-  while True:
-    if kind == 'umbrella':
-      if np.random.rand() > 0.5:
-        angle = np.random.randint(135, 221)
-      else:
-        angle = np.random.randint(315, 401) % 360
-    elif kind == 'monotonic':
-      angle = np.random.randint(0, 236)
-    elif kind == 'full':
-      angle = np.random.randint(0, 361)
-    else:
-      raise ValueError(f'Unsupported kind: {kind}')
-    print(f'next angle: {angle}')
-    vec = copy(base)
-    vec[-1] = angle
-    yield vec
-
-def procedural_env_ctor(mode, **kws):
-  env = make_env(config, mode, **kws)
-  env.set_tasks_generator(
-    iter(iter_tasks(kind='monotonic' if 'monotonic' in config.train_tasks_file else 'umbrella'))
-  )
-  return env
 
 if config.iid_eval:
   lockfile = syncfile if config.test_tasks_file is None else config.test_tasks_file
@@ -257,16 +257,6 @@ if config.iid_eval:
       kind='monotonic' if 'monotonic' in config.train_tasks_file else 'umbrella')
     env.create_tasks(params)
     return env
-
-dummy_env = make_env(config, 'train')
-action_space = dummy_env.action_space['action']
-parallel = 'process' if config.parallel else 'local'
-train_driver = common.Driver(
-  partial(procedural_env_ctor, 'train'), num_envs=config.num_envs,
-  mode=parallel, lock=config.num_envs > 1, lockfile=config.train_tasks_file,
-)
-train_driver.on_episode(lambda ep: per_episode(ep, mode='train'))
-train_driver.on_step(lambda _: step.increment())
 
 if config.iid_eval:
   lockfile = config.train_tasks_file if config.test_tasks_file is None else config.test_tasks_file
