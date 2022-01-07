@@ -17,6 +17,18 @@
             "console": "integratedTerminal"
         },
         {
+            "name": "v2",
+            "env": {"CUDA_VISIBLE_DEVICES": "0"},
+            "type": "python",
+            "request": "launch",
+            "program": "dreamerv2/train.py",
+            "args": ["--configs", "defaults", "mtw", "ml1", "rotated_drawer_close", "open_full", "--gpu", "1",
+                     "--logging.run_name", "open_v2_full"],
+            // "cwd": "/dreamerv2",
+            "justMyCode": false,
+            "console": "integratedTerminal"
+        },
+        {
             "name": "addressing_dyne",
             "env": {"CUDA_VISIBLE_DEVICES": "0"},
             "type": "python",
