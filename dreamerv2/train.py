@@ -43,7 +43,7 @@ for name in parsed.configs:
 config = elements.FlagParser(config).parse(remaining)
 os.environ['CUDA_VISIBLE_DEVICES'] = str(config.gpu) #str(args.gpu)
 if config.logging.wdb:
-  wandb.init(entity='cds-mipt', project='oc_mbrl', config=common.flatten_conf(config), group=config.logging.exp_name, 
+  wandb.init(entity='cds-mipt', project='oc_mbrl', config=common.flatten_conf(config), group=config.logging.exp_name,
              name=config.logging.run_name, settings=wandb.Settings(start_method='thread'))
 if '$' in config.logdir:
   config = config.update({
@@ -112,7 +112,7 @@ def make_env(config, mode, **kws):
         life_done=False, sticky_actions=True, all_actions=True)
     env = common.OneHotAction(env)
   elif suite == 'metaworld':
-    if mode != 'eval':
+    if mode == 'eval':
       # in eval we freeze each worker to have a fixed env type
       if 'worker_id' in kws:
         del kws['worker_id']
@@ -178,7 +178,7 @@ def per_episode(ep, mode):
         videos.append(video[:, row: row + 1])
       video = np.concatenate(videos, 3)
       if config.logging.wdb:
-        wandb.log({f"{mode}_segm_policy": wandb.Video(video, fps=30, format="gif")})  
+        wandb.log({f"{mode}_segm_policy": wandb.Video(video, fps=30, format="gif")})
   logger.write()
 
 print('Create envs.')
@@ -188,7 +188,7 @@ dummy_env = make_env(config, 'train')
 action_space = dummy_env.action_space['action']
 parallel = 'process' if config.parallel else 'local'
 train_driver = common.Driver(
-  partial(make_env, config, 'train'), num_envs=config.num_envs, 
+  partial(make_env, config, 'train'), num_envs=config.num_envs,
   mode=parallel, lock=config.num_envs > 1, lockfile=config.train_tasks_file,
 )
 train_driver.on_episode(lambda ep: per_episode(ep, mode='train'))
@@ -210,33 +210,77 @@ def generate_tasks(name, kind):
     high = np.random.randint(135, 221, 24)
     low = np.random.randint(315, 401, 24) % 360
     rng = np.concatenate([high, low], 0)
-  if kind == 'monotonic':
+  elif kind == 'monotonic':
     rng = np.random.randint(0, 236, 48)
+  elif kind == 'full':
+    rng = np.random.randint(0, 361, 72)
+  else:
+    raise ValueError(f'Unsupported kind: {kind}')
   tasks = []
   for val in rng:
     vec = copy(base)
     vec[-1] = val
     tasks.append(vec)
   return {f'{name}-v2': tasks}
+
+def iter_tasks(kind):
+  base = np.array([0.02, 0.9 , 0.  , 0.  ])
+  while True:
+    if kind == 'umbrella':
+      if np.random.rand() > 0.5:
+        angle = np.random.randint(135, 221)
+      else:
+        angle = np.random.randint(315, 401) % 360
+    elif kind == 'monotonic':
+      angle = np.random.randint(0, 236)
+    elif kind == 'full':
+      angle = np.random.randint(0, 361)
+    else:
+      raise ValueError(f'Unsupported kind: {kind}')
+    print(f'next angle: {angle}')
+    vec = copy(base)
+    vec[-1] = angle
+    yield vec
+
+def procedural_env_ctor(mode, **kws):
+  env = make_env(config, mode, **kws)
+  env.set_tasks_generator(
+    iter(iter_tasks(kind='monotonic' if 'monotonic' in config.train_tasks_file else 'umbrella'))
+  )
+  return env
+
 if config.iid_eval:
   lockfile = syncfile if config.test_tasks_file is None else config.test_tasks_file
   def env_ctor(**kws):
     env = make_env(config, 'eval', **kws)
-    params = generate_tasks(config.task.split('_')[-1], 
+    params = generate_tasks(config.task.split('_')[-1],
       kind='monotonic' if 'monotonic' in config.train_tasks_file else 'umbrella')
     env.create_tasks(params)
     return env
+
+dummy_env = make_env(config, 'train')
+action_space = dummy_env.action_space['action']
+parallel = 'process' if config.parallel else 'local'
+train_driver = common.Driver(
+  partial(procedural_env_ctor, 'train'), num_envs=config.num_envs,
+  mode=parallel, lock=config.num_envs > 1, lockfile=config.train_tasks_file,
+)
+train_driver.on_episode(lambda ep: per_episode(ep, mode='train'))
+train_driver.on_step(lambda _: step.increment())
+
+if config.iid_eval:
+  lockfile = config.train_tasks_file if config.test_tasks_file is None else config.test_tasks_file
   iid_eval_driver = common.Driver(
-    env_ctor, num_envs=config.num_envs, 
+    env_ctor, num_envs=config.num_envs,
     mode=parallel, lock=config.num_envs > 1,
     lockfile=f'{lockfile}_iid',
   )
   iid_eval_driver.on_episode(lambda ep: per_episode(ep, mode='iid_eval'))
 else:
   iid_eval_driver = None
-  
+
 eval_driver = common.Driver(
-  partial(make_env, config, 'eval'), num_envs=config.num_envs, 
+  partial(make_env, config, 'eval'), num_envs=config.num_envs,
   mode=parallel, lock=config.num_envs > 1,
   lockfile=syncfile if config.test_tasks_file is None else config.test_tasks_file,
 )
@@ -248,7 +292,7 @@ if prefill:
   random_agent = common.RandomAgent(action_space)
   train_driver(random_agent, steps=prefill, episodes=1)
   eval_driver(random_agent, episodes=1)
-  
+
   train_driver.reset()
   eval_driver.reset()
   if config.iid_eval:
@@ -264,8 +308,8 @@ if config.embeddings.trainer.mode == 'sa_dyne':
                                                   sequential=True,
                                                   **config.embeddings.dataset
                                                   ))
-  dyne_encoder = embeddings.SADyneEncoder(config.embeddings.dyne, 
-                                          config.embeddings.traj_len, 
+  dyne_encoder = embeddings.SADyneEncoder(config.embeddings.dyne,
+                                          config.embeddings.traj_len,
                                           action_space)
   trainer = embeddings.DyneTrainer(config.embeddings.trainer, dyne_encoder)
   for i in range(config.embeddings.trainer.training_steps):
@@ -329,7 +373,7 @@ while step < config.steps:
   if isinstance(video, dict):
     for k, vid in video.items():
       logger.add({'openl': vid}, prefix=f'eval_{k}')
-  else:    
+  else:
     logger.add({'openl': video}, prefix='eval')
   if should_openl_video(step) and config.logging.wdb:
     if isinstance(video, dict):

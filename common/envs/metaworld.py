@@ -151,6 +151,7 @@ class MetaWorld:
     self.env_tasks = {}
     self.envs_cls = {}
     self.tr_envs_cls = {}
+    self.tasks_generator = None
     self.transparent = transparent
     if domain == 'mt10':
       dom = metaworld.MT10()
@@ -174,6 +175,7 @@ class MetaWorld:
         tr_env = Async(partial(tr_env_cls, transparent_sawyer=True))
         self.tr_envs_cls[name] = tr_env
         tr_env.call('set_task', task)()
+    np.random.seed(worker_id or 1)
     self.worker_id = worker_id
     if worker_id is None:
       self._curr_env = random.choice(list(self.envs_cls.keys()))
@@ -221,6 +223,9 @@ class MetaWorld:
         cam = intmap[cam]
       assert isinstance(cam, str)
       self._cameras.append(cam)
+  
+  def set_tasks_generator(self, gen):
+    self.tasks_generator = gen
 
   def load_tasks(self, path):
     with open(path, 'rb') as f:
@@ -358,11 +363,15 @@ class MetaWorld:
     if self.randomize_tasks:
       # TODO: maybe add per-event random task sync. 
       # for now this is fine.
-      self.task_id[self._curr_env] = np.random.choice(len(self._tasks))
-      task = self._tasks[self.task_id[self._curr_env]]
-      self._env.set_task(task)
-      if self.transparent:
-        self._tr_env.call('set_task', task)()
+      if self.tasks_generator is not None:
+        task_vec = next(self.tasks_generator)
+        self.set_task_vector(task_vec)
+      else:
+        self.task_id[self._curr_env] = np.random.choice(len(self._tasks))
+        task = self._tasks[self.task_id[self._curr_env]]
+        self._env.set_task(task)
+        if self.transparent:
+          self._tr_env.call('set_task', task)()
     position = self._env.reset()
     if self.transparent:
       tr_position = self._tr_env.call('reset')()
