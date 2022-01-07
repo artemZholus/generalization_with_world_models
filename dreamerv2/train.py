@@ -113,7 +113,7 @@ def make_env(config, mode, **kws):
         life_done=False, sticky_actions=True, all_actions=True)
     env = common.OneHotAction(env)
   elif suite == 'metaworld':
-    if mode != 'eval':
+    if mode == 'eval':
       # in eval we freeze each worker to have a fixed env type
       if 'worker_id' in kws:
         del kws['worker_id']
@@ -198,8 +198,12 @@ def generate_tasks(name, kind, num):
     high = np.random.randint(135, 221, num//2)
     low = np.random.randint(315, 401, num//2) % 360
     rng = np.concatenate([high, low], 0)
-  if kind == 'monotonic':
+  elif kind == 'monotonic':
     rng = np.random.randint(0, 236, num)
+  elif kind == 'full':
+    rng = np.random.randint(0, 361, num)
+  else:
+    raise ValueError(f'Unsupported kind: {kind}')
   tasks = []
   for val in rng:
     print(val)
@@ -207,6 +211,32 @@ def generate_tasks(name, kind, num):
     vec[-1] = val
     tasks.append(vec)
   return {f'{name}-v2': tasks}
+
+def iter_tasks(kind):
+  base = np.array([0.02, 0.9 , 0.  , 0.  ])
+  while True:
+    if kind == 'umbrella':
+      if np.random.rand() > 0.5:
+        angle = np.random.randint(135, 221)
+      else:
+        angle = np.random.randint(315, 401) % 360
+    elif kind == 'monotonic':
+      angle = np.random.randint(0, 236)
+    elif kind == 'full':
+      angle = np.random.randint(0, 361)
+    else:
+      raise ValueError(f'Unsupported kind: {kind}')
+    print(f'next angle: {angle}')
+    vec = copy(base)
+    vec[-1] = angle
+    yield vec
+
+def procedural_env_ctor(mode, **kws):
+  env = make_env(config, mode, **kws)
+  env.set_tasks_generator(
+    iter(iter_tasks(kind='monotonic' if 'monotonic' in config.train_tasks_file else 'umbrella'))
+  )
+  return env
 
 def env_ctor(mode, num, **kws):
     env = make_env(config, mode, **kws)
@@ -220,7 +250,7 @@ dummy_env = make_env(config, 'train')
 action_space = dummy_env.action_space['action']
 parallel = 'process' if config.parallel else 'local'
 train_driver = common.Driver(
-  partial(env_ctor, 'train', config.num_envs), num_envs=config.num_envs, 
+  partial(procedural_env_ctor, 'train'), num_envs=config.num_envs, 
   mode=parallel, lock=config.num_envs > 1, lockfile=config.train_tasks_file,
 )
 train_driver.on_episode(lambda ep: per_episode(ep, mode='train'))
