@@ -200,6 +200,8 @@ def generate_tasks(name, kind, num):
     rng = np.concatenate([high, low], 0)
   if kind == 'monotonic':
     rng = np.random.randint(0, 236, num)
+  if kind == 'full':
+    rng = np.random.randint(0, 360, num)
   tasks = []
   for val in rng:
     print(val)
@@ -210,9 +212,15 @@ def generate_tasks(name, kind, num):
 
 def env_ctor(mode, num, **kws):
     env = make_env(config, mode, **kws)
+    if 'monotonic' in config.train_tasks_file:
+      kind = 'monotonic'
+    elif 'umbrella' in config.train_tasks_file:
+      kind = 'umbrella'
+    else:
+      kind = 'full'
     params = generate_tasks(config.task.split('_')[-1], 
-      kind='monotonic' if 'monotonic' in config.train_tasks_file else 'umbrella',
-      num=num)
+                            kind=kind, num=num)
+    params["path"] = logdir
     env.create_tasks(params)
     return env
 

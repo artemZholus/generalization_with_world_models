@@ -243,8 +243,8 @@ class MetaWorld:
         new_taskset[name].append(new_task)
     for name, env in self.envs_cls.items():
       self.env_tasks[name] = (new_taskset[name], 0)
-    self.dump_tasks(f'{self.syncfile}_iid_eval.data')
-    self.load_tasks(f'{self.syncfile}_iid_eval.data')
+    self.dump_tasks(params["path"] / 'tasks_iid_eval.data')
+    self.load_tasks(params["path"] / 'tasks_iid_eval.data')
 
   def dump_tasks(self, path):
     with open(path, 'wb') as f:
