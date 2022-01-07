@@ -227,10 +227,16 @@ def env_ctor(mode, num, **kws):
 dummy_env = make_env(config, 'train')
 action_space = dummy_env.action_space['action']
 parallel = 'process' if config.parallel else 'local'
-train_driver = common.Driver(
-  partial(env_ctor, 'train', config.num_envs), num_envs=config.num_envs, 
-  mode=parallel, lock=config.num_envs > 1, lockfile=config.train_tasks_file,
-)
+if config.sample_tasks:
+  train_driver = common.Driver(
+    partial(env_ctor, 'train', config.num_envs), num_envs=config.num_envs, 
+    mode=parallel, lock=config.num_envs > 1, lockfile=config.train_tasks_file,
+  )
+else:
+  train_driver = common.Driver(
+    partial(make_env, config, 'train'), num_envs=config.num_envs, 
+    mode=parallel, lock=config.num_envs > 1, lockfile=config.train_tasks_file,
+  )
 train_driver.on_episode(lambda ep: per_episode(ep, mode='train'))
 train_driver.on_step(lambda _: step.increment())
 
