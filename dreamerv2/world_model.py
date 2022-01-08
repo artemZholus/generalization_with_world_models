@@ -4,6 +4,7 @@ from tensorflow.keras import mixed_precision as prec
 import elements
 import common
 import expl
+import math
 import proposal
 
 
@@ -361,6 +362,11 @@ class CausalWorldModel(WorldModel):
     img_depth = 1 if self.config.grayscale else 3
     n_cams = obs['image'].shape[-1] // img_depth
     repeats = [img_depth] * n_cams
+    if 'task_vector' in obs:
+      angle = obs['task_vector'][..., -1:]
+      angle = angle / 180. * math.pi
+      angle -= math.pi
+      obs['task_vector'] = tf.concat([obs['task_vector'][..., :-1], angle], -1)
     if self.config.transparent:
       subject = tf.cast(obs['segmentation'][..., :1] == 1, self.dtype)
       obj = tf.cast(obs['segmentation'][..., 1:] == 2, self.dtype)

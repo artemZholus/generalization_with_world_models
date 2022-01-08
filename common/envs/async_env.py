@@ -1,5 +1,7 @@
 import atexit
 import sys
+import time
+import random
 import traceback
 from filelock import FileLock
 
@@ -86,6 +88,8 @@ class Async(object):
 
   def _worker(self, constructor, conn):
     try:
+      t = random.random()
+      time.sleep(t)
       env = constructor()
       while True:
         try:
