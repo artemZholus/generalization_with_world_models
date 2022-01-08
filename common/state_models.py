@@ -143,7 +143,7 @@ class Reasoner(RSSM):
     self._min_std = min_std
     self._cell = common.GRUCell(self._deter, norm=True)
     self._cast = lambda x: tf.cast(x, prec.global_policy().compute_dtype)
-  
+
   def initial(self, batch_size):
     dtype = prec.global_policy().compute_dtype
     if self._discrete:
@@ -208,7 +208,7 @@ class Reasoner(RSSM):
       prior_update = self._cast(prior_update)
     prior = self.update_step(curr_state, prior_update, name='img', sample=sample)
     return prior
-  
+
   def update_step(self, curr_state, update, name='', sample=True):
     state_emb = curr_state['out']
     x = tf.concat([state_emb, update], -1)
@@ -232,7 +232,7 @@ class Reasoner(RSSM):
     x = self.get('trans_out', tfkl.Dense, self._hidden, self._act)(x)
     state = {'out': x, 'deter': deter}
     return state
-  
+
   def get_feat(self, state):
     stoch = self._cast(state['stoch'])
     if self._discrete:
@@ -256,7 +256,7 @@ class Reasoner2Rnn(RSSM):
     self.post_cell = common.GRUCell(self._deter, norm=True)
     self.prio_cell = common.GRUCell(self._deter, norm=True)
     self._cast = lambda x: tf.cast(x, prec.global_policy().compute_dtype)
-  
+
   def initial(self, batch_size, prior=True):
     dtype = prec.global_policy().compute_dtype
     key = 'prio' if prior else 'post'
@@ -323,7 +323,7 @@ class Reasoner2Rnn(RSSM):
   #     prior_update = self._cast(prior_update)
   #   prior = self.update_step(curr_state, prior_update, name='img', sample=sample)
   #   return prior
-  
+
   # def update_step(self, curr_state, update, name='', sample=True):
   #   state_emb = curr_state['out']
   #   x = tf.concat([state_emb, update], -1)
@@ -353,7 +353,7 @@ class Reasoner2Rnn(RSSM):
     curr_state = {'out': x, 'deter': deter}
     latent = {'stoch': stoch, 'curr_state_post': curr_state, **stats}
     return latent
-  
+
   @tf.function
   def img_step(self, prev_state, prior_update, task_vec=None, sample=True):
     prev_stoch = self._cast(prev_state['stoch'])
@@ -418,7 +418,7 @@ class DualReasoner(RSSM):
     cond_kws['layers'] = cond_kws.get('layers', 2)
     cond_kws['size'] = cond_kws.get('size', cond_stoch)
     self.condition_model = common.ConditionModel(**cond_kws)
-  
+
   @tf.function
   def top_down_step(self, state, obj_emb=None, subj_emb=None, action=None, current_step=None, task_vec=None, sample=True):
     subj_state = state['subj']
@@ -429,8 +429,8 @@ class DualReasoner(RSSM):
     else:
       subj_curr_state = None
       obj_curr_state = None
-    obj_post = self.obj_reasoner.obs_step(prev_state=obj_state, post_update=obj_emb, 
-                                          # curr_state=subj_curr_state, 
+    obj_post = self.obj_reasoner.obs_step(prev_state=obj_state, post_update=obj_emb,
+                                          # curr_state=subj_curr_state,
                                           sample=sample)
     utility = self.condition_model.observe(self.obj_reasoner.get_feat(obj_post), sample=sample)
     post_update = tf.concat([self._cast(utility['stoch']), subj_emb], -1)
@@ -449,11 +449,11 @@ class DualReasoner(RSSM):
     else:
       subj_curr_state = None
       obj_curr_state = None
-    subj_prior = self.subj_reasoner.img_step(prev_state=subj_state, prev_action=action, 
-                                             #curr_state=subj_curr_state, 
+    subj_prior = self.subj_reasoner.img_step(prev_state=subj_state, prev_action=action,
+                                             #curr_state=subj_curr_state,
                                              sample=sample)
     ustate = self.subj_reasoner.get_feat(subj_prior)
-    ustate = tf.stop_gradient(ustate)
+    #ustate = tf.stop_gradient(ustate)
     if task_vec is not None:
       task_vec = self._cast(task_vec)
       ustate = tf.concat([ustate, task_vec], -1)
@@ -464,8 +464,8 @@ class DualReasoner(RSSM):
       prior_update = tf.concat([ustoch, ctask_vec], -1)
     else:
       prior_update = self._cast(utility['stoch'])
-    obj_prior = self.obj_reasoner.img_step(prev_state=obj_state, prior_update=prior_update, 
-                                           # curr_state=obj_curr_state, 
+    obj_prior = self.obj_reasoner.img_step(prev_state=obj_state, prior_update=prior_update,
+                                           # curr_state=obj_curr_state,
                                            sample=sample)
     return {'subj': subj_prior, 'obj': obj_prior, 'utility': utility}
 
@@ -536,7 +536,7 @@ class DualReasoner(RSSM):
     post = tf.nest.map_structure(swap, post)
     prior = tf.nest.map_structure(swap, prior)
     return post, prior
-  
+
   @tf.function
   def imagine(self, action, state=None, task_vec=None):
     swap = lambda x: tf.transpose(x, [1, 0] + list(range(2, len(x.shape))))
@@ -557,7 +557,7 @@ class DualReasoner(RSSM):
     subj_loss, subj_value = self.subj_reasoner.kl_loss(post['subj'], prior['subj'], **kwargs.get('subj', {}))
     obj_loss, obj_value = self.obj_reasoner.kl_loss(post['obj'], prior['obj'], **kwargs.get('obj', {}))
     deter_kl = ((
-      post['obj']['curr_state_post']['deter'] - 
+      post['obj']['curr_state_post']['deter'] -
       prior['obj']['curr_state_prio']['deter']
     ) ** 2).sum(-1).mean()
     deter_kl = tf.cast(deter_kl, tf.float32)
@@ -591,7 +591,7 @@ class DualRSSM(common.Module):
     elif self.strategy == 'delta':
       curr_feats = self.subj_rssm.get_feat(curr_subj_states)
       prev_feats = self.subj_rssm.get_feat(prev_subj_states)
-      diff = lambda x, y: x - y 
+      diff = lambda x, y: x - y
       feat = tf.nest.map_structure(diff, curr_feats, prev_feats)
     return tf.stop_gradient(feat)
 
@@ -602,11 +602,11 @@ class DualRSSM(common.Module):
       complete_shapes = lambda x: tf.expand_dims(x, 1)
       start_state = tf.nest.map_structure(complete_shapes, start_state)
     if self.strategy == 'reactive':
-      states = {k: tf.concat([tf.cast(start_state[k], v.dtype), 
+      states = {k: tf.concat([tf.cast(start_state[k], v.dtype),
                               subj_states[k][:, :-1]], 1) for k, v in subj_states.items()}
       feat = self.subj_rssm.get_feat(states)
     elif self.strategy == 'delta':
-      states = {k: tf.concat([tf.cast(start_state[k], v.dtype), 
+      states = {k: tf.concat([tf.cast(start_state[k], v.dtype),
                               subj_states[k]], 1) for k, v in subj_states.items()}
       feat = self.subj_rssm.get_feat(states)
       diff = lambda x: x[:, 1:] - x[:, :-1]
@@ -704,7 +704,7 @@ class MutualRSSM(common.Module):
     elif self.strategy == 'delta':
       curr_feats = self.subj_rssm.get_feat(curr_subj_states)
       prev_feats = self.subj_rssm.get_feat(prev_subj_states)
-      diff = lambda x, y: x - y 
+      diff = lambda x, y: x - y
       feat = tf.nest.map_structure(diff, curr_feats, prev_feats)
     return tf.stop_gradient(feat)
 
@@ -714,13 +714,13 @@ class MutualRSSM(common.Module):
     elif self.strategy == 'reactive':
       complete_shapes = lambda x: tf.expand_dims(x, 1) if len(x.shape) < 3 else x
       start_state = tf.nest.map_structure(complete_shapes, start_state)
-      states = {k: tf.concat([tf.cast(start_state[k], v.dtype), 
+      states = {k: tf.concat([tf.cast(start_state[k], v.dtype),
                               subj_states[k][:, :-1]], 1) for k, v in subj_states.items()}
       feat = self.subj_rssm.get_feat(states)
     elif self.strategy == 'delta':
       complete_shapes = lambda x: tf.expand_dims(x, 1) if len(x.shape) < 3 else x
       start_state = tf.nest.map_structure(complete_shapes, start_state)
-      states = {k: tf.concat([tf.cast(start_state[k], v.dtype), 
+      states = {k: tf.concat([tf.cast(start_state[k], v.dtype),
                               subj_states[k]], 1) for k, v in subj_states.items()}
       feat = self.subj_rssm.get_feat(states)
       diff = lambda x: x[:, 1:] - x[:, :-1]
