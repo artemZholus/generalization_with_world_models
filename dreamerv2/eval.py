@@ -269,7 +269,7 @@ for angle in tqdm(range(0, 360, 5), desc=logdir.stem):
       curr_task = env.set_task_vector(curr_task_vec)
       env.set_task_set(env_name, [curr_task])
 
-  eval_driver(eval_policy, episodes=100)
+  eval_driver(eval_policy, episodes=20)
   my_saver.dump(logdir / 'stats.pkl')
 
 # while step < config.steps:
