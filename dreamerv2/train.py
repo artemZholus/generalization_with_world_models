@@ -233,8 +233,16 @@ def iter_tasks(kind):
 
 def procedural_env_ctor(mode, **kws):
   env = make_env(config, mode, **kws)
+  if 'umbrella' in config.train_tasks_file:
+    kind = 'umbrella'
+  elif 'full' in config.train_tasks_file:
+    kind = 'full'
+  elif 'monotonic' in config.train_tasks_file:
+    kind = 'monotonic'
+  else:
+    raise ValueError()
   env.set_tasks_generator(
-    iter(iter_tasks(kind='monotonic' if 'monotonic' in config.train_tasks_file else 'umbrella'))
+    iter(iter_tasks(kind=kind))
   )
   return env
 
