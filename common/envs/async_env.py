@@ -1,4 +1,5 @@
 import atexit
+import time
 import sys
 import traceback
 from filelock import FileLock
@@ -55,7 +56,13 @@ class Async(object):
     except IOError:
       # The connection was already closed.
       pass
-    self._process.join()
+    try:
+      self._process.terminate()
+      time.sleep(0.1)
+      self._process.join()
+    except Exception as e:
+      print(f'error: {e}')
+
 
   def step(self, action, blocking=True):
     promise = self.call('step', action)

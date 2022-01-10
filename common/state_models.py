@@ -484,6 +484,8 @@ class DualReasoner(RSSM):
           feat_vec = self.obj_reasoner.get_feat(state['obj'])
         elif feat == 'utility':
           feat_vec = self._cast(state['utility']['stoch'])
+        else:
+          raise ValueError(f'bad feature {feat}')
         features.append(feat_vec)
       return tf.concat(features, -1)
     else:

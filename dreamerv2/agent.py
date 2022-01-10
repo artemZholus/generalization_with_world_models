@@ -41,7 +41,7 @@ class Agent(common.Module):
     )[config.expl_behavior]()
     # Train step to initialize variables including optimizer statistics.
     data = next(self._dataset)
-    self.train(data)
+    self.train(data,)# do_wm_step=not config.train_ac_only)
     pass
 
   @tf.function
