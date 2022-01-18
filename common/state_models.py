@@ -433,8 +433,8 @@ class DualReasoner(RSSM):
                                           # curr_state=subj_curr_state,
                                           sample=sample)
     utility = self.condition_model.observe(self.obj_reasoner.get_feat(obj_post), sample=sample)
-    # post_update = tf.concat([self._cast(utility['stoch']), subj_emb], -1)
-    post_update = subj_emb
+    post_update = tf.concat([self._cast(utility['stoch']), subj_emb], -1)
+    # post_update = subj_emb
     subj_post, _ = self.subj_reasoner.obs_step(
       prev_state=subj_state, embed=post_update, prev_action=action, sample=sample
     )
