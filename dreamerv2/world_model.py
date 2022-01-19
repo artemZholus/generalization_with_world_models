@@ -52,7 +52,7 @@ class WorldModel(common.Module):
     data = self.preprocess(data)
     embed = self.encoder(data)
     post, prior = self.rssm.observe(embed, data['action'], state, task_vector=data.get('task_vector', None))
-    kl_loss, kl_value = self.rssm.kl_loss(post, prior, **self.config.kl)
+    kl_loss, kl_value = self.rssm.kl_loss(post, prior, data=data, **self.config.kl)
     # stoch deter (mean std)/(logit)
     likes = {}
     if isinstance(kl_loss, dict):
