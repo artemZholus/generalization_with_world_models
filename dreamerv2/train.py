@@ -331,7 +331,7 @@ if (logdir / 'variables.pkl').exists() or config.agent_path != 'none' or config.
     agnt.load(logdir / 'variables.pkl')
   elif config.ac_path == 'none' and config.wm_path == 'none':
     agnt.load(config.agent_path)
-    common.tfutils.reset_model(agnt._task_behavior)
+    # common.tfutils.reset_model(agnt._task_behavior)
 else:
   config.pretrain and print('Pretrain agent.')
   for _ in tqdm(range(config.pretrain)):

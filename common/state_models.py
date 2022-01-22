@@ -565,29 +565,30 @@ class DualReasoner(RSSM):
     ) ** 2
     deter_kl = tf.cast(deter_kl, tf.float32)
     deter_kl = deter_kl.sum(-1).mean()
-    # # PSEUDO IMAGINATION
-    # # 10 is pseudo imagination horizon
-    # state = tf.nest.map_structure(lambda x: tf.reshape(x[:, :-10], [x.shape[0] * (x.shape[1] - 10), -1]), post['obj'])
-    # u = prior['utility']['stoch']
-    # target = post['obj']['curr_state_post']['deter']
-    # # target = tf.stop_gradient(target)
-    # STEPS = 10
-    # idx = tf.convert_to_tensor(np.arange(STEPS - 1).astype(np.int64))
-    # loss = 0
-    # def ps_img_step(state, j):
-    #   state, loss = state
-    #   util = tf.reshape(u[:, j:-STEPS+j], [u.shape[0] * (u.shape[1] - STEPS), -1])
-    #   ustoch = self._cast(util)
-    #   ctask_vec = self._cast(kwargs['data']['task_vector'])
-    #   ctask_vec = tf.reshape(ctask_vec[:, j:-STEPS+j], [ctask_vec.shape[0] * (ctask_vec.shape[1] - STEPS), -1])
-    #   util = tf.concat([ustoch, ctask_vec], -1)
-    #   psimg = self.obj_reasoner.img_step(prev_state=state, prior_update=util, sample=True)
-    #   curr_targ = tf.reshape(target[:, j+1:-STEPS+j+1], [target.shape[0] * (target.shape[1] - STEPS), -1])
-    #   step_loss = ((psimg['curr_state_prio']['deter'] - curr_targ) ** 2)
-    #   step_loss = tf.cast(step_loss, tf.float32)
-    #   step_loss = step_loss.sum(-1).mean()
-    #   return psimg, step_loss
-    # states, loss = common.static_scan(ps_img_step, idx, (state, 0))
+    # PSEUDO IMAGINATION
+    # 10 is pseudo imagination horizon
+    state = tf.nest.map_structure(lambda x: tf.reshape(x[:, :-10], [x.shape[0] * (x.shape[1] - 10), -1]), post['obj'])
+    u = prior['utility']['stoch']
+    target = post['obj']['curr_state_post']['deter']
+    # target = tf.stop_gradient(target)
+    STEPS = 10
+    idx = tf.convert_to_tensor(np.arange(STEPS - 1).astype(np.int64))
+    loss = 0
+    def ps_img_step(state, j):
+      state, loss,  = state
+      util = tf.reshape(u[:, j:-STEPS+j], [u.shape[0] * (u.shape[1] - STEPS), -1])
+      ustoch = self._cast(util)
+      ctask_vec = self._cast(kwargs['data']['task_vector'])
+      ctask_vec = tf.reshape(ctask_vec[:, j:-STEPS+j], [ctask_vec.shape[0] * (ctask_vec.shape[1] - STEPS), -1])
+      util = tf.concat([ustoch, ctask_vec], -1)
+      psimg = self.obj_reasoner.img_step(prev_state=state, prior_update=util, sample=True)
+      curr_targ = tf.reshape(target[:, j+1:-STEPS+j+1], [target.shape[0] * (target.shape[1] - STEPS), -1])
+      step_loss = ((psimg['curr_state_prio']['deter'] - curr_targ) ** 2)
+      step_loss = tf.cast(step_loss, tf.float32)
+      full_loss = tf.reshape(step_loss.sum(1), [u.shape[0], -1])
+      step_loss = step_loss.sum(-1).mean()
+      return psimg, step_loss, full_loss
+    states, loss, full_loss = common.static_scan(ps_img_step, idx, (state, 0, 0))
     # for _ in range(10): 
     #   i.assign_add(1)
     #   util = tf.reshape(u[:, i:-10+i], [u.shape[0] * (u.shape[1] - 10), -1])
