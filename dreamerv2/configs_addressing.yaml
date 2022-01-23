@@ -455,7 +455,7 @@ dmc_hopper:
 debug:
 
   jit: False
-  time_limit: 100
+  time_limit: 120
   # eval_every: 300
   # log_every: 300
   prefill: 100

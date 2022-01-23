@@ -130,7 +130,7 @@ def make_env(config, mode, **kws):
   env = common.ResetObs(env)
   return env
 
-def per_episode(ep, mode):
+def per_episode(ep, mode, filename=None):
   length = len(ep['reward']) - 1
   task_name = None
   if 'task_name' in ep:
@@ -138,7 +138,7 @@ def per_episode(ep, mode):
   score = float(ep['reward'].astype(np.float64).sum())
   print(f'{mode.title()} episode has {length} steps and return {score:.1f}.')
   replay_ = dict(train=train_replay, eval=eval_replay)[mode if 'eval' not in mode else 'eval']
-  ep_file = replay_.add(ep)
+  ep_file = replay_.add(ep, done=True, filename=filename)
   if mode == 'train' and config.multitask.bootstrap:
     # mt_replay.add(ep)
     mt_replay._episodes[str(ep_file)] = ep
@@ -181,6 +181,18 @@ def per_episode(ep, mode):
         wandb.log({f"{mode}_segm_policy": wandb.Video(video, fps=30, format="gif")})
   logger.write()
 
+filenames = {}
+def per_sub_episode(ep, mode, filename=None):
+  length = len(ep['reward']) - 1
+  task_name = None
+  if 'task_name' in ep:
+    task_name = ep['task_name'][0]
+  score = float(ep['reward'].astype(np.float64).sum())
+  print(f'{mode.title()} episode has {length} steps and return {score:.1f}.')
+  replay_ = dict(train=train_replay, eval=eval_replay)[mode if 'eval' not in mode else 'eval']
+  ep_file = replay_.add(ep, filename=filename, done=False)
+  return ep_file
+
 print('Create envs.')
 # train_envs = [make_env(config, 'train') for _ in range(config.num_envs)]
 # eval_envs = [make_env(config, 'eval') for _ in range(config.num_envs)]
@@ -216,7 +228,8 @@ train_driver = common.Driver(
   partial(procedural_env_ctor, 'train'), num_envs=config.num_envs,
   mode=parallel, lock=config.num_envs > 1, lockfile=config.train_tasks_file,
 )
-train_driver.on_episode(lambda ep: per_episode(ep, mode='train'))
+train_driver.on_episode(lambda ep,f: per_episode(ep, 'train', f))
+train_driver.on_sub_episode(lambda ep,f, **kw: per_sub_episode(ep, 'train', f))
 train_driver.on_step(lambda _: step.increment())
 syncfile = None
 if 'metaworld' in config.task:
@@ -265,7 +278,7 @@ if config.iid_eval:
     mode=parallel, lock=config.num_envs > 1,
     lockfile=f'{lockfile}_iid',
   )
-  iid_eval_driver.on_episode(lambda ep: per_episode(ep, mode='iid_eval'))
+  iid_eval_driver.on_episode(lambda ep,f: per_episode(ep, 'iid_eval', f))
 else:
   iid_eval_driver = None
 
@@ -274,7 +287,7 @@ eval_driver = common.Driver(
   mode=parallel, lock=config.num_envs > 1,
   lockfile=syncfile if config.test_tasks_file is None else config.test_tasks_file,
 )
-eval_driver.on_episode(lambda ep: per_episode(ep, mode='eval'))
+eval_driver.on_episode(lambda ep, f: per_episode(ep, 'eval', f))
 
 prefill = max(0, config.prefill - train_replay.total_steps)
 if prefill:

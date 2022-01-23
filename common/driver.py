@@ -3,6 +3,7 @@ import os
 import atexit
 import sys
 import traceback
+from collections import defaultdict
 from functools import partial
 from tempfile import NamedTemporaryFile
 from filelock import FileLock
@@ -36,7 +37,10 @@ class Driver:
     self._on_steps = []
     self._on_resets = []
     self._on_episodes = []
+    self._on_sub_episodes = []
+    self.filenames = {}
     self._call_kws = {}
+    self.global_step = defaultdict(int)
     if self.mode == 'process':
       self._call_kws = {'blocking': False}
     self._actspaces = [env.action_space.spaces for env in self._envs]
@@ -50,6 +54,9 @@ class Driver:
 
   def on_episode(self, callback):
     self._on_episodes.append(callback)
+
+  def on_sub_episode(self, callback):
+    self._on_sub_episodes.append(callback)
 
   def reset(self):
     self._obs = [None] * len(self._envs)
@@ -104,7 +111,21 @@ class Driver:
         if done:
           ep = self._eps[i]
           ep = {k: self._convert([t[k] for t in ep]) for k in ep[0]}
-          [callback(ep, **self._kwargs) for callback in self._on_episodes]
+          filename = None
+          if i in self.filenames:
+            filename = self.filenames[i]
+          [callback(ep, filename, **self._kwargs) for callback in self._on_episodes]
+          self.filenames = {}
+          self.global_step[i] = 0
+        elif len(self._on_sub_episodes) != 0:
+          if self.global_step[i] % 50 == 0 and self.global_step[i] >= 50:
+            ep = self._eps[i]
+            ep = {k: self._convert([t[k] for t in ep]) for k in ep[0]}
+            filename = None
+            if i in self.filenames:
+              filename = self.filenames[i]
+            self.filenames[i] = [callback(ep, filename, **self._kwargs) for callback in self._on_sub_episodes][0]
+        self.global_step[i] += 1
       obs, _, dones = zip(*[p[:3] for p in results])
       self._obs = list(obs)
       self._dones = list(dones)

@@ -50,10 +50,16 @@ class Replay:
   def calculate_length(self):
     return sum(len(ep['reward']) - 1 for name, ep in load_episodes_lazy(self._directory))
 
-  def add(self, episode):
-    length = self._length(episode)
+  def add(self, episode, filename=None, done=False):
+    if filename is None:
+      length = self._length(episode)
+    else:
+      length = self._length(episode)
+      length -= self._length(self._episodes[str(filename)])
     self._step += length
-    if self._limit:
+    filenames = [filename] if filename is not None else None
+    filename = save_episodes(self._directory, [episode], filenames)[0]
+    if self._limit and done:
       total = 0
       for key, ep in reversed(sorted(
           self._episodes.items(), key=lambda x: x[0])):
@@ -61,7 +67,11 @@ class Replay:
           total += self._length(ep)
         else:
           del self._episodes[key]
-    filename = save_episodes(self._directory, [episode])[0]
+    if not done:
+      self._episodes[str(filename)] = episode
+    else:
+      if str(filename) in self._episodes:
+        del self._episodes[str(filename)]
     # self._episodes[str(filename)] = episode
     return filename
 
@@ -115,21 +125,25 @@ class Replay:
     return len(episode['reward']) - 1
 
 
-def save_episodes(directory, episodes):
+def save_episodes(directory, episodes, filenames=None):
   directory = pathlib.Path(directory).expanduser()
   directory.mkdir(parents=True, exist_ok=True)
   timestamp = datetime.datetime.now().strftime('%Y%m%dT%H%M%S')
-  filenames = []
-  for episode in episodes:
-    identifier = str(uuid.uuid4().hex)
-    length = len(episode['reward']) - 1
-    filename = directory / f'{timestamp}-{identifier}-{length}.npz'
+  filenames = filenames or []
+  for j in range(len(episodes)):
+    episode = episodes[j]
+    if j < len(filenames):
+      filename = filenames[j]
+    else:
+      identifier = str(uuid.uuid4().hex)
+      length = len(episode['reward']) - 1
+      filename = directory / f'{timestamp}-{identifier}-{length}.npz'
+      filenames.append(filename)
     with io.BytesIO() as f1:
       np.savez_compressed(f1, **episode)
       f1.seek(0)
       with filename.open('wb') as f2:
         f2.write(f1.read())
-    filenames.append(filename)
   return filenames
 
 
