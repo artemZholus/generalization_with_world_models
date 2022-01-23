@@ -39,6 +39,7 @@ class ConditionModel(PostPriorNet):
   def __init__(self, size=32, hidden=200, layers=2, act=tf.nn.elu, discrete=False):
     super().__init__()
     self._size = size
+    self._stoch = size
     self.forward_cond = MLP(shape=[size], units=hidden, layers=layers-1, dist_layer=False, act=act)
     self.backward_cond = MLP(shape=[size], units=hidden, layers=layers-1, dist_layer=False, act=act)
     self._discrete = discrete
