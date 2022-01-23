@@ -414,6 +414,7 @@ class DualReasoner(RSSM):
     self.subj_reasoner = RSSM(stoch=stoch, deter=deter, hidden=hidden, discrete=discrete, act=act, std_act=std_act, min_std=min_std)
     if cond_kws is None:
       cond_kws = {}
+    cond_kws = dict(cond_kws)
     cond_kws['hidden'] = cond_kws.get('hidden', hidden)
     cond_kws['act'] = cond_kws.get('act', act)
     cond_kws['discrete'] = cond_kws.get('discrete', discrete)
@@ -567,46 +568,37 @@ class DualReasoner(RSSM):
     deter_kl = deter_kl.sum(-1).mean()
     # PSEUDO IMAGINATION
     # 10 is pseudo imagination horizon
-    state = tf.nest.map_structure(lambda x: tf.reshape(x[:, :-10], [x.shape[0] * (x.shape[1] - 10), -1]), post['obj'])
-    u = prior['utility']['stoch']
-    target = post['obj']['curr_state_post']['deter']
-    # target = tf.stop_gradient(target)
-    STEPS = 10
-    idx = tf.convert_to_tensor(np.arange(STEPS - 1).astype(np.int64))
-    loss = 0
-    def ps_img_step(state, j):
-      state, loss,  = state
-      util = tf.reshape(u[:, j:-STEPS+j], [u.shape[0] * (u.shape[1] - STEPS), -1])
-      ustoch = self._cast(util)
-      ctask_vec = self._cast(kwargs['data']['task_vector'])
-      ctask_vec = tf.reshape(ctask_vec[:, j:-STEPS+j], [ctask_vec.shape[0] * (ctask_vec.shape[1] - STEPS), -1])
-      util = tf.concat([ustoch, ctask_vec], -1)
-      psimg = self.obj_reasoner.img_step(prev_state=state, prior_update=util, sample=True)
-      curr_targ = tf.reshape(target[:, j+1:-STEPS+j+1], [target.shape[0] * (target.shape[1] - STEPS), -1])
-      step_loss = ((psimg['curr_state_prio']['deter'] - curr_targ) ** 2)
-      step_loss = tf.cast(step_loss, tf.float32)
-      full_loss = tf.reshape(step_loss.sum(1), [u.shape[0], -1])
-      step_loss = step_loss.sum(-1).mean()
-      return psimg, step_loss, full_loss
-    states, loss, full_loss = common.static_scan(ps_img_step, idx, (state, 0, 0))
-    # for _ in range(10): 
-    #   i.assign_add(1)
-    #   util = tf.reshape(u[:, i:-10+i], [u.shape[0] * (u.shape[1] - 10), -1])
+    # STEPS = 10
+    # state = tf.nest.map_structure(lambda x: tf.reshape(x[:, :-STEPS], [x.shape[0] * (x.shape[1] - STEPS), -1]), post['obj'])
+    # u = prior['utility']['stoch']
+    # target = post['obj']['curr_state_post']['deter']
+    # # target = tf.stop_gradient(target)
+    
+    # idx = tf.convert_to_tensor(np.arange(STEPS - 1).astype(np.int64))
+    # loss = 0
+    # def ps_img_step(state, j):
+    #   state, loss, l  = state
+    #   util = tf.reshape(u[:, j:-STEPS+j], [u.shape[0] * (u.shape[1] - STEPS), -1])
     #   ustoch = self._cast(util)
     #   ctask_vec = self._cast(kwargs['data']['task_vector'])
-    #   ctask_vec = tf.reshape(ctask_vec[:, i:-10+i], [ctask_vec.shape[0] * (ctask_vec.shape[1] - 10), -1])
+    #   ctask_vec = tf.reshape(ctask_vec[:, j:-STEPS+j], [ctask_vec.shape[0] * (ctask_vec.shape[1] - STEPS), -1])
     #   util = tf.concat([ustoch, ctask_vec], -1)
     #   psimg = self.obj_reasoner.img_step(prev_state=state, prior_update=util, sample=True)
-    #   curr_targ = tf.reshape(target[:, i+1:-10+i+1], [target.shape[0] * (target.shape[1] - 10), -1])
+    #   curr_targ = tf.reshape(target[:, j+1:-STEPS+j+1], [target.shape[0] * (target.shape[1] - STEPS), -1])
     #   step_loss = ((psimg['curr_state_prio']['deter'] - curr_targ) ** 2)
-    #   state = psimg
     #   step_loss = tf.cast(step_loss, tf.float32)
+    #   full_loss = tf.reshape(step_loss.sum(1), [u.shape[0], -1])
     #   step_loss = step_loss.sum(-1).mean()
-    # TODO: sample=True make things stochastic. This means, later states will be changed anyway.
-      
+    #   return psimg, step_loss, full_loss
+    # states, long_det_kl_loss, full_loss = common.static_scan(ps_img_step, idx, (state, 0, 0))
+    
     util_loss, util_value = self.condition_model.kl_loss(post['utility'], prior['utility'], **kwargs.get('util', {}))
-    loss = {'subj': subj_loss, 'obj': obj_loss, 'obj_deter': deter_kl, 'util': util_loss}
-    value = {'subj': subj_value, 'obj': obj_value, 'obj_deter': deter_kl, 'util': util_value}
+    loss = {'subj': subj_loss, 'obj': obj_loss, 'obj_deter': deter_kl, 
+            # 'long_det_kl': long_det_kl_loss.mean(), 
+            'util': util_loss}
+    value = {'subj': subj_value, 'obj': obj_value, 'obj_deter': deter_kl, 
+            #  'long_det_kl': long_det_kl_loss.mean(), 
+             'util': util_value}
     return loss, value
 
 
