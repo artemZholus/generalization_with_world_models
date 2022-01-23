@@ -383,8 +383,24 @@ close_full:
 
 causal:
   transparent: True
-  cond_model_size: 32
-  cond_kws.discrete: 16
+  critic.layers: 3
+  critic_opt.wd: 0.000001
+  decoder.act: elu
+  decoder.depth: 32
+  kl.balance: 0.5
+  model_opt.lr: 0.0006
+  obj_encoder.act: elu
+  obj_encoder.depth: 32
+  subj_encoder.act: elu
+  subj_encoder.depth: 32
+  rssm.hidden: 200
+  rssm.discrete: 0
+  actor.layers: 3
+  reward_head.layers: 3
+  # cond_model_size: 32
+  # cond_kws.discrete: 16
+  cond_model_size: 200
+  cond_kws.discrete: 0
   iid_eval: True
   steps: 4e6
   world_model: causal

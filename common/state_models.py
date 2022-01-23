@@ -412,6 +412,7 @@ class DualReasoner(RSSM):
     self.subj_reasoner = RSSM(stoch=stoch, deter=deter, hidden=hidden, discrete=discrete, act=act, std_act=std_act, min_std=min_std)
     if cond_kws is None:
       cond_kws = {}
+    cond_kws = dict(cond_kws)
     cond_kws['hidden'] = cond_kws.get('hidden', hidden)
     cond_kws['act'] = cond_kws.get('act', act)
     cond_kws['discrete'] = cond_kws.get('discrete', discrete)
