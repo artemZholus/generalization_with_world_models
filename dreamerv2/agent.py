@@ -65,7 +65,7 @@ class Agent(common.Module):
     else:
       task_vec = None
     latent, _ = self.wm.rssm.obs_step(latent, action, embed, task_vec=task_vec, sample=sample)
-    feat = self.wm.rssm.get_feat(latent, key='policy')
+    feat = self.wm.rssm.get_feat(latent, key='policy', task_vec=task_vec)
     behaviour = self._task_behavior
     expl_behavour = self._expl_behavior
     if second_agent:
