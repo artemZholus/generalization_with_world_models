@@ -86,12 +86,12 @@ class WorldModel(common.Module):
     task_vec = flatten(task_vec)
     def step(prev, _):
       state, _, _, _ = prev
-      pfeat = self.rssm.get_feat(state, key='policy')
+      pfeat = self.rssm.get_feat(state, key='policy', task_vec=task_vec)
       rfeat = self.rssm.get_feat(state)
       action = policy(tf.stop_gradient(pfeat)).sample()
       succ = self.rssm.img_step(state, action, task_vec=task_vec)
       return succ, pfeat, rfeat, action
-    pfeat = 0 * self.rssm.get_feat(start, key='policy')
+    pfeat = 0 * self.rssm.get_feat(start, key='policy', task_vec=task_vec)
     rfeat = 0 * self.rssm.get_feat(start)
     action = policy(pfeat).mode()
     succs, pfeats, rfeats, actions = common.static_scan(

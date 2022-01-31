@@ -474,7 +474,7 @@ class DualReasoner(RSSM):
   def img_step(self, state, action, task_vec=None, sample=True):
     return self.bottom_up_step(state, action, task_vec=task_vec, sample=sample)
 
-  def get_feat(self, state, key=None):
+  def get_feat(self, state, key=None, task_vec=None):
     if key is not None and 'subj' in key:
       subj_feat = self.subj_reasoner.get_feat(state['subj'])
       return subj_feat
@@ -490,6 +490,8 @@ class DualReasoner(RSSM):
           feat_vec = self.obj_reasoner.get_feat(state['obj'])
         elif feat == 'utility':
           feat_vec = self._cast(state['utility']['stoch'])
+        elif feat == 'task_vec':
+          feat_vec = self._cast(task_vec)
         features.append(feat_vec)
       return tf.concat(features, -1)
     else:
