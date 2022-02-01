@@ -43,6 +43,7 @@ class ConditionModel(PostPriorNet):
     self.forward_cond = MLP(shape=[size], units=hidden, layers=layers-1, dist_layer=False, act=act)
     self.backward_cond = MLP(shape=[size], units=hidden, layers=layers-1, dist_layer=False, act=act)
     self._discrete = discrete
+    self._cast = lambda x: tf.cast(x, prec.global_policy().compute_dtype)
 
   def imagine(self, state, sample=True):
     emb = self.forward_cond(state)
