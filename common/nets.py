@@ -58,6 +58,9 @@ class ConditionModel(PostPriorNet):
     condition = dist.sample() if sample else dist.mode()
     return {'stoch': condition, **stats}
 
+  def get_feat(self, state):
+    return self._cast(state['stoch'])
+
   def initial(self, batch_size):
     dtype = prec.global_policy().compute_dtype
     if self._discrete:
