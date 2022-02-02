@@ -104,7 +104,8 @@ class Agent(common.Module):
       zs_metrics = self._zero_shot_ac.train(self.wm, start, reward)
       metrics.update({f'zero-shot/{k}': v for k, v in zs_metrics.items()})
     if do_ac_step:
-      metrics.update(self._task_behavior.train(self.wm, start, reward, task_vec=data.get('task_vector', None)))
+      # metrics.update(self._task_behavior.train(self.wm, start, reward, task_vec=data.get('task_vector', None)))
+      metrics.update(self.train_posterior1(data, self.reward))
     if self.config.expl_behavior != 'greedy':
       if self.config.pred_discount:
         data = tf.nest.map_structure(lambda x: x[:, :-1], data)
@@ -112,6 +113,39 @@ class Agent(common.Module):
       mets = self._expl_behavior.train(start, outputs, data)[-1]
       metrics.update({'expl_' + key: value for key, value in mets.items()})
     return state, metrics
+
+  def train_posterior1(self, data, reward_fn, state=None):
+    post, prior = self.wm.observe_full(data, state)
+    feat = self.wm.rssm.get_feat(post)
+    pfeat = self.wm.rssm.get_feat(post, key='policy')
+    reward = reward_fn(feat, state, None)
+    if 'discount' in self.wm.heads:
+      disc = self.heads['discount'](feat).mean()
+    else:
+      disc = self.config.discount * tf.ones_like(pfeat[..., 0])
+    reward = tf.transpose(reward, [1, 0])
+    feat = tf.transpose(feat, [1, 0, 2])
+    disc = tf.transpose(disc, [1, 0])
+    target, weight, mets1 = self._task_behavior.target(feat, reward, disc)
+    baseline = self._task_behavior.critic(feat[:-1]).mode()
+    with tf.GradientTape() as actor_tape:
+      policy = self._task_behavior.actor(tf.stop_gradient(feat[1:]))
+      advantage = target - baseline
+      objective = policy.log_prob(tf.transpose(data['action'], [1,0,2])[1:]) * advantage
+      loss = (-objective).mean()
+    self._task_behavior.actor_opt(actor_tape, loss, self._task_behavior.actor)
+    with tf.GradientTape() as critic_tape:
+      value = self._task_behavior.critic(feat[:-1])
+      loss = -value.log_prob(tf.stop_gradient(target)).mean()
+    self._task_behavior.critic_opt(critic_tape, loss, self._task_behavior.critic)
+    ent = policy.entropy().mean()
+    metrics = {}
+    metrics['reward_mean'] = reward.mean()
+    metrics['reward_std'] = reward.std()
+    metrics['actor_ent'] = ent
+    metrics['actor_loss'] = objective
+    metrics['critic_target'] = target.mean()
+    return loss, metrics
 
   @tf.function
   def report(self, data):
@@ -185,7 +219,7 @@ class ActorCritic(common.Module):
     metrics = {'critic': dist.mode().mean()}
     return critic_loss, metrics
 
-  def target(self, feat, action, reward, disc):
+  def target(self, feat, reward, disc):
     reward = tf.cast(reward, tf.float32)
     disc = tf.cast(disc, tf.float32)
     value = self._target_critic(feat).mode()
