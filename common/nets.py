@@ -161,15 +161,19 @@ class ConvEncoder(common.Module):
 
 class DualConvEncoder(common.Module):
 
-  def __init__(self, subj_config, obj_config):
+  def __init__(self, subj_config, obj_config, obj_gt):
     super().__init__()
     self.subj_encoder = ConvEncoder(**subj_config)
     self.obj_encoder = ConvEncoder(**obj_config)
+    self.obj_gt = obj_gt
 
   @tf.function
   def __call__(self, obs):
     subj_embed = self.subj_encoder(obs)
-    obj_embed = self.obj_encoder(obs)
+    if self.obj_gt:
+      obj_embed = obs['obj_gt']
+    else:
+      obj_embed = self.obj_encoder(obs)
     embed = {'subj': subj_embed, 'obj': obj_embed}
     return embed
 

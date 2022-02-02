@@ -254,6 +254,7 @@ class ReasonerMLP(RSSM):
     self._std_act = std_act
     self._min_std = min_std
     self._cell = common.GRUCell(self._deter, norm=True)
+    self._stoch_features = True
     self._cast = lambda x: tf.cast(x, prec.global_policy().compute_dtype)
 
   def initial(self, batch_size):
@@ -335,7 +336,10 @@ class ReasonerMLP(RSSM):
     if self._discrete:
       shape = stoch.shape[:-2] + [self._stoch * self._discrete]
       stoch = tf.reshape(stoch, shape)
-    return tf.concat([stoch, state['deter']], -1)
+    if self._stoch_features:
+      return stoch
+    else:
+      return tf.concat([stoch, state['deter']], -1)
 
 class Reasoner2Rnn(RSSM):
   def __init__(

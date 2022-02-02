@@ -56,6 +56,7 @@ defaults:
   encoder: {depth: 48, act: elu, kernels: [4, 4, 4, 4], keys: [image], rect: False}
   decoder: {depth: 48, act: elu, kernels: [5, 5, 6, 6]}
   reward_head: {layers: 4, units: 400, act: elu, dist: mse}
+  obj_gt_head: {layers: 4, units: 100, act: elu, dist: mse}
   discount_head: {layers: 4, units: 400, act: elu, dist: binary}
   loss_scales: {kl: 1.0, subj_kl: 1.0, obj_kl: 1.0, util_kl: 1.0, reward: 1.0, discount: 1.0}
   kl: 
@@ -76,6 +77,7 @@ defaults:
   obj_rssm: {hidden: 400, deter: 400, stoch: 32, discrete: 32, act: elu, std_act: sigmoid2, min_std: 0.1}
   subj_encoder: {depth: 48, act: elu, kernels: [4, 4, 4, 4], keys: [subj_image], rect: False}
   obj_encoder: {depth: 48, act: elu, kernels: [4, 4, 4, 4], keys: [obj_image], rect: False}
+  obj_gt: False
 
   # Actor Critic
   actor: {layers: 4, units: 400, act: elu, dist: trunc_normal, min_std: 0.1}
@@ -383,6 +385,7 @@ close_full:
 
 causal:
   transparent: True
+  obj_gt: True
   critic.layers: 3
   critic_opt.wd: 0.000001
   decoder.act: elu

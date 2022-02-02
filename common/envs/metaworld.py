@@ -333,7 +333,7 @@ class MetaWorld:
       if done:
         break
     obs = self.parse_obs(obs_vec)
-    obs['gt_objective'] = self.get_gt_objective(obs)
+    obs['obj_gt'] = self.get_gt_objective(obs)
 
     # TODO: transparent here
     obs['image'] = self.render()
@@ -386,7 +386,7 @@ class MetaWorld:
     if self.transparent:
       tr_position = self._tr_env.call('reset')()
     obs = self.parse_obs(position)
-    obs['gt_objective'] = self.get_gt_objective(obs)
+    obs['obj_gt'] = self.get_gt_objective(obs)
     # TODO: transparent here
     obs['image'] = self.render()
     if self.segmentation:
