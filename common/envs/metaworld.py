@@ -310,6 +310,15 @@ class MetaWorld:
     obs['task_vector'] = self.unwrapped._last_rand_vec.copy()
     return obs
 
+  def get_gt_objective(self, obs):
+    handle_target_xy = obs["obj1_pos_quat"][:2] - obs["goal_position"][:2]
+    drawer_xy = copy(self._env.sim.model.body_pos[self._env.model.body_name2id('drawer')][:2])
+    handle_xy = copy(obs["obj1_pos_quat"][:2])
+    angle = self._env._angle * (np.pi/180)
+    handle_target_dist = np.linalg.norm(obs["obj1_pos_quat"][:3] - obs["goal_position"])
+    return np.hstack((handle_target_xy, drawer_xy, handle_xy,
+                      angle, handle_target_dist))
+
   def step(self, action):
     action = action['action']
     assert np.isfinite(action).all(), action
@@ -324,6 +333,7 @@ class MetaWorld:
       if done:
         break
     obs = self.parse_obs(obs_vec)
+    obs['gt_objective'] = self.get_gt_objective(obs)
 
     # TODO: transparent here
     obs['image'] = self.render()
@@ -376,6 +386,7 @@ class MetaWorld:
     if self.transparent:
       tr_position = self._tr_env.call('reset')()
     obs = self.parse_obs(position)
+    obs['gt_objective'] = self.get_gt_objective(obs)
     # TODO: transparent here
     obs['image'] = self.render()
     if self.segmentation:
