@@ -1,6 +1,7 @@
 from collections import defaultdict
 from functools import partial
 import os
+import math
 import threading
 import pickle
 from copy import deepcopy as copy
@@ -314,8 +315,8 @@ class MetaWorld:
     handle_target_xy = obs["obj1_pos_quat"][:2] - obs["goal_position"][:2]
     drawer_xy = copy(self._env.sim.model.body_pos[self._env.model.body_name2id('drawer')][:2])
     handle_xy = copy(obs["obj1_pos_quat"][:2])
-    angle = self._env._angle * (np.pi/180)
-    handle_target_dist = np.linalg.norm(obs["obj1_pos_quat"][:3] - obs["goal_position"])
+    angle = obs['task_vector'] * ( math.pi/180. ) - math.pi
+    handle_target_dist = np.linalg.norm(obs["obj1_pos_quat"][:3] - obs["goal_position"][:3])
     return np.hstack((handle_target_xy, drawer_xy, handle_xy,
                       angle, handle_target_dist))
 
