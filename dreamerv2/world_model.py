@@ -348,7 +348,6 @@ class CausalWorldModel(WorldModel):
     self.encoder = common.DualConvEncoder(config.subj_encoder, config.obj_encoder, config.obj_gt)
     self.heads['subj_image'] = common.ConvDecoder(shape, **config.decoder)
     self.heads['obj_image'] = common.ConvDecoder(shape, **config.decoder)
-    self.heads['obj_gt'] = common.MLP((8,), **config.obj_gt_head)
     self.heads['reward'] = common.MLP([], **config.reward_head)
     if config.pred_discount:
       self.heads['discount'] = common.MLP([], **config.discount_head)
