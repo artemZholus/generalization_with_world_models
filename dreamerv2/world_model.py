@@ -345,9 +345,17 @@ class CausalWorldModel(WorldModel):
     shape = config.image_size + (config.img_channels,)
     self.rssm = common.DualReasoner(**config.rssm, 
       cond_stoch=config.cond_model_size, cond_kws=config.cond_kws, policy_feats=config.policy_feats)
-    self.encoder = common.DualConvEncoder(config.subj_encoder, config.obj_encoder, config.obj_gt)
+    self.encoder = common.DualConvEncoder(config.subj_encoder, config.obj_encoder, config.obj_features)
     self.heads['subj_image'] = common.ConvDecoder(shape, **config.decoder)
-    self.heads['obj_image'] = common.ConvDecoder(shape, **config.decoder)
+
+    if config.obj_features == 'gt':
+      self.heads['obj_gt'] = common.MLP((8,), **config.obj_gt_head)
+    if config.obj_features == 'img':
+      self.heads['obj_image'] = common.ConvDecoder(shape, **config.decoder)
+    if config.obj_features == 'mixed':
+      self.heads['obj_image'] = common.ConvDecoder(shape, **config.decoder)
+      self.heads['obj_gt'] = common.MLP((8,), **config.obj_gt_head)
+
     self.heads['reward'] = common.MLP([], **config.reward_head)
     if config.pred_discount:
       self.heads['discount'] = common.MLP([], **config.discount_head)
@@ -397,7 +405,9 @@ class CausalWorldModel(WorldModel):
 
   @tf.function
   def video_pred(self, data):
-    return {
-      'subj': super().video_pred(data, img_key='subj_image'),
-      'obj': super().video_pred(data, img_key='obj_image'),
+    pred =  {
+      'subj': super().video_pred(data, img_key='subj_image')
     }
+    if not self.config.obj_features == 'gt':
+      pred['obj'] = super().video_pred(data, img_key='obj_image')
+    return pred

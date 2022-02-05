@@ -161,19 +161,24 @@ class ConvEncoder(common.Module):
 
 class DualConvEncoder(common.Module):
 
-  def __init__(self, subj_config, obj_config, obj_gt):
+  def __init__(self, subj_config, obj_config, obj_features):
     super().__init__()
     self.subj_encoder = ConvEncoder(**subj_config)
-    self.obj_encoder = ConvEncoder(**obj_config)
-    self.obj_gt = obj_gt
+    self.obj_features = obj_features
+    if not self.obj_features == 'gt':
+      self.obj_encoder = ConvEncoder(**obj_config)
 
   @tf.function
   def __call__(self, obs):
     subj_embed = self.subj_encoder(obs)
-    if self.obj_gt:
-      obj_embed = obs['obj_gt']
-    else:
+    if self.obj_features == 'gt':
+      obj_embed = tf.cast(obs['obj_gt'], prec.global_policy().compute_dtype)
+    elif self.obj_features == 'img':
       obj_embed = self.obj_encoder(obs)
+    elif self.obj_features == 'mixed':
+      img_embed = self.obj_encoder(obs)
+      gt_embed = tf.cast(obs['obj_gt'], prec.global_policy().compute_dtype)
+      obj_embed = tf.concat([img_embed, gt_embed], -1)
     embed = {'subj': subj_embed, 'obj': obj_embed}
     return embed
 
