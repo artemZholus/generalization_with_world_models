@@ -386,6 +386,7 @@ close_full:
 causal:
   transparent: True
   obj_features: 'img'
+  grad_heads: [obj_image, subj_image, reward]
   critic.layers: 3
   critic_opt.wd: 0.000001
   decoder.act: elu
