@@ -104,8 +104,8 @@ class Agent(common.Module):
       zs_metrics = self._zero_shot_ac.train(self.wm, start, reward)
       metrics.update({f'zero-shot/{k}': v for k, v in zs_metrics.items()})
     if do_ac_step:
-      # metrics.update(self._task_behavior.train(self.wm, start, reward, task_vec=data.get('task_vector', None)))
-      metrics.update(self.train_posterior1(data, self.reward))
+      metrics.update(self._task_behavior.train(self.wm, start, reward, task_vec=data.get('task_vector', None)))
+      # metrics.update(self.train_posterior1(data, self.reward))
     if self.config.expl_behavior != 'greedy':
       if self.config.pred_discount:
         data = tf.nest.map_structure(lambda x: x[:, :-1], data)
