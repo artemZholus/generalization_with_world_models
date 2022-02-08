@@ -393,6 +393,7 @@ causal:
   obj_encoder.depth: 32
   subj_encoder.act: elu
   subj_encoder.depth: 32
+  grad_heads: [obj_image, subj_image, reward]
   rssm.hidden: 200
   rssm.discrete: 0
   actor.layers: 3
