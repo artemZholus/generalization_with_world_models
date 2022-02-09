@@ -46,6 +46,14 @@ class WorldModel(common.Module):
       prior=prior
     )
     return post, outs
+  
+  @tf.function
+  def observe_full(self, data, state=None):
+    print('calling wm observe')
+    data = self.preprocess(data)
+    embed = self.encoder(data)
+    post, prior = self.rssm.observe(embed, data['action'], state, task_vector=data.get('task_vector', None))
+    return post, prior
 
   def loss(self, data, state=None):
     print('calling wm loss')
