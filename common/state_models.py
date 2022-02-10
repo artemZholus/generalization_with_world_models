@@ -1,4 +1,5 @@
 import numpy as np
+import math
 import tensorflow as tf
 from tensorflow.keras import layers as tfkl
 from tensorflow_probability import distributions as tfd
@@ -543,6 +544,26 @@ class DualReasoner(RSSM):
       prev_state=subj_state, embed=post_update, prev_action=action, sample=sample
     )
     return {'subj': subj_post, 'obj': obj_post, 'utility': utility}
+
+  def mut_inf(self, sample, kind='obj'):
+    NUM_SAMPLES = 5
+    dist = self.get_dist(sample)
+    stoch = dist[kind].sample(NUM_SAMPLES)
+    curr_prob = dist[kind].log_prob(stoch)
+    mu, sigma = sample[kind]['mean'], sample[kind]['std']
+    mu = tf.expand_dims(mu, 2)
+    sigma = tf.expand_dims(sigma, 2)
+    if kind == 'obj': 
+      expand_dist = self.obj_reasoner.get_dist({'mean': mu, 'std': sigma})
+    elif kind == 'subj':
+      expand_dist = self.subj_reasoner.get_dist({'mean': mu, 'std': sigma})
+    elif kind == 'utility':
+      expand_dist = self.condition_model.get_dist({'mean': mu, 'std': sigma})
+    stoch = tf.expand_dims(stoch, 2)
+    prob = expand_dist.log_prob(stoch)
+    marginal_prob = prob.logsumexp(2) - math.log(prob.shape[2])
+    mi = (curr_prob - marginal_prob).mean()
+    return mi
 
   @tf.function
   def bottom_up_step(self, state, action, task_vec=None, current_step=None, sample=True):

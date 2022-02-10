@@ -46,6 +46,14 @@ class WorldModel(common.Module):
       prior=prior
     )
     return post, outs
+  
+  @tf.function
+  def observe_full(self, data, state=None):
+    print('calling wm observe')
+    data = self.preprocess(data)
+    embed = self.encoder(data)
+    post, prior = self.rssm.observe(embed, data['action'], state, task_vector=data.get('task_vector', None))
+    return post, prior
 
   def loss(self, data, state=None):
     print('calling wm loss')
@@ -75,8 +83,19 @@ class WorldModel(common.Module):
         embed=embed, feat=feat, post=post,
         prior=prior, likes=likes, kl=kl_value)
     metrics = {f'{name}_loss': value for name, value in losses.items()}
-
+    metrics.update(self.mut_inf(post, prior))
     return model_loss, post, outs, metrics
+
+  def mut_inf(self, post, prior):
+    metrics = {
+      'mi_q_subj': self.rssm.mut_inf(post, kind='subj'),
+      'mi_q_util': self.rssm.mut_inf(post, kind='utility'),
+      'mi_q_obj': self.rssm.mut_inf(post, kind='obj'),
+      'mi_p_subj': self.rssm.mut_inf(prior, kind='subj'),
+      'mi_p_util': self.rssm.mut_inf(prior, kind='utility'),
+      'mi_p_obj': self.rssm.mut_inf(prior, kind='obj'),
+    }
+    return metrics
 
   def imagine(self, policy, start, horizon, task_vec=None):
     print('calling wm imagine')
