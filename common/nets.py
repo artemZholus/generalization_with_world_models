@@ -45,14 +45,18 @@ class ConditionModel(PostPriorNet):
     self._discrete = discrete
     self._cast = lambda x: tf.cast(x, prec.global_policy().compute_dtype)
 
-  def imagine(self, state, sample=True):
+  def imagine(self, state, sample=True, noise=None):
+    if noise:
+      state = state + noise
     emb = self.forward_cond(state)
     stats = self._suff_stats_layer('img', emb)
     dist = self.get_dist(stats)
     condition = dist.sample() if sample else dist.mode()
     return {'stoch': condition, **stats}
   
-  def observe(self, state, sample=True):
+  def observe(self, state, sample=True, noise=None):
+    if noise:
+      state = state + noise
     emb = self.backward_cond(state)
     stats = self._suff_stats_layer('obs', emb)
     dist = self.get_dist(stats)
