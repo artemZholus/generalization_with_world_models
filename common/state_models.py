@@ -533,17 +533,26 @@ class DualReasoner(RSSM):
     else:
       subj_curr_state = None
       obj_curr_state = None
-    obj_post = self.obj_reasoner.obs_step(prev_state=obj_state, 
-                                          current_state=obj_curr_state,
-                                          post_update=obj_emb,
-                                          sample=sample)
-    utility = self.condition_model.observe(self.obj_reasoner.get_feat(obj_post), sample=sample)
-    post_update = tf.concat([self._cast(utility['stoch']), subj_emb], -1)
-    # post_update = subj_emb
-    subj_post, _ = self.subj_reasoner.obs_step(
-      prev_state=subj_state, embed=post_update, prev_action=action, sample=sample
+
+    obj_update = obj_emb
+    obj_post = self.obj_reasoner.obs_step(
+      prev_state=obj_state, 
+      current_state=obj_curr_state,
+      post_update=obj_update,
+      sample=sample
     )
-    return {'subj': subj_post, 'obj': obj_post, 'utility': utility}
+    
+    # post_update = tf.concat([self._cast(utility['stoch']), subj_emb], -1)
+    subj_update = subj_emb
+    subj_post, _ = self.subj_reasoner.obs_step(
+      prev_state=subj_state, embed=subj_update, prev_action=action, sample=sample
+    )
+
+    util_update = tf.concat(
+      [self.obj_reasoner.get_feat(obj_post), 
+       self.subj_reasoner.get_feat(subj_post)], -1)
+    util_post = self.condition_model.observe(util_update, sample=sample)
+    return {'subj': subj_post, 'obj': obj_post, 'utility': util_post}
 
   def mut_inf(self, sample, kind='obj'):
     NUM_SAMPLES = 5
