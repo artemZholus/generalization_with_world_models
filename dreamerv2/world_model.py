@@ -20,7 +20,7 @@ class WorldModel(common.Module):
     self.modules = []
     self.model_opt = common.Optimizer('model', **config.model_opt)
     self.dtype = prec.global_policy().compute_dtype
-  
+
   def train(self, data, state=None):
     print('calling train wm')
     with tf.GradientTape() as model_tape:
@@ -46,7 +46,7 @@ class WorldModel(common.Module):
       prior=prior
     )
     return post, outs
-  
+
   @tf.function
   def observe_full(self, data, state=None):
     print('calling wm observe')
@@ -55,7 +55,7 @@ class WorldModel(common.Module):
     post, prior = self.rssm.observe(embed, data['action'], state, task_vector=data.get('task_vector', None))
     return post, prior
 
-  def loss(self, data, state=None):
+  def loss(self, data, state=None, full=True):
     print('calling wm loss')
     data = self.preprocess(data)
     embed = self.encoder(data)
@@ -121,7 +121,7 @@ class WorldModel(common.Module):
     else:
       discount = self.config.discount * tf.ones_like(pfeats[..., 0])
     return pfeats, rfeats, states, actions, discount
-  
+
   @tf.function
   def preprocess(self, obs):
     obs = obs.copy()
@@ -143,7 +143,7 @@ class WorldModel(common.Module):
     if 'discount' in obs:
       obs['discount'] *= self.config.discount
     return obs
-  
+
   @tf.function
   def video_pred(self, data, img_key='image'):
     data = self.preprocess(data)
@@ -160,7 +160,7 @@ class WorldModel(common.Module):
     states, _ = self.rssm.observe(embed, action, task_vector=task_vector)
     feat = self.rssm.get_feat(states, key=img_key)
     recon = self.heads[img_key](feat).mode()[:6]
-    
+
     last = lambda x: x[:, -1]
     init = tf.nest.map_structure(last, states)
     if task_vector is not None:
@@ -216,7 +216,7 @@ class DualWorldModel(WorldModel):
       obs['subj_image'] = tf.repeat(subject, repeats=repeats, axis=-1) * obs['image']
       obs['obj_image'] = tf.repeat(obj, repeats=repeats, axis=-1) * obs['image']
     return obs
-  
+
   def loss(self, data, state=None):
     model_loss, post, outs, metrics = super().loss(data, state)
     metrics['model_subj_kl'] = outs['kl']['subj'].mean()
@@ -247,7 +247,7 @@ class DualWorldModel(WorldModel):
       states, _ = self.rssm.observe(embed_start, action_start)
       feat = self.rssm.get_feat(states)
       recon = self.heads['image'](feat).mode()[:6] + 0.5
-      
+
       embed = tf.nest.map_structure(cont, embed)
       action = tf.nest.map_structure(cont, action)
       last = lambda x: x[:, -1]
@@ -263,7 +263,7 @@ class DualWorldModel(WorldModel):
       model = openl
     else:
       model = tf.concat([recon[:, :5], openl], 1)
-    
+
     error = (model - truth + 1) / 2
     _, _, h, w, _ = model.shape
     video = tf.concat([truth, model, error], 2)
@@ -311,7 +311,7 @@ class MutualWorldModel(WorldModel):
     obs['subj_image'] = tf.repeat(subject, repeats=repeats, axis=-1) * obs['image']
     obs['obj_image'] = tf.repeat(obj, repeats=repeats, axis=-1) * obs['image']
     return obs
-  
+
   def loss(self, data, state=None):
     model_loss, post, outs, metrics = super().loss(data, state)
     metrics['model_subj_kl'] = outs['kl']['subj'].mean()
@@ -362,7 +362,7 @@ class CausalWorldModel(WorldModel):
   def __init__(self, step, config):
     super().__init__(step, config)
     shape = config.image_size + (config.img_channels,)
-    self.rssm = common.DualReasoner(**config.rssm, 
+    self.rssm = common.DualReasoner(**config.rssm,
       cond_stoch=config.cond_model_size, cond_kws=config.cond_kws, policy_feats=config.policy_feats)
     self.encoder = common.DualConvEncoder(config.subj_encoder, config.obj_encoder, config.obj_features)
     self.heads['subj_image'] = common.ConvDecoder(shape, **config.decoder)
@@ -407,13 +407,22 @@ class CausalWorldModel(WorldModel):
       obs['obj_image'] = tf.repeat(obj, repeats=repeats, axis=-1) * obs['image']
     return obs
 
-  def loss(self, data, state):
-    model_loss, post, outs, metrics = super().loss(data, state)
+  def train(self, data, state=None, full=True):
+    print('calling train wm')
+    with tf.GradientTape() as model_tape:
+      model_loss, state, outputs, metrics = self.loss(data, state, full=full)
+    metrics.update(self.model_opt(model_tape, model_loss, self.modules))
+    return state, outputs, metrics
+
+  def loss(self, data, state, full=True):
+    model_loss, post, outs, metrics = super().loss(data, state, full=full)
+    #if full:
     metrics['model_subj_kl'] = outs['kl']['subj'].mean()
     metrics['model_obj_kl'] = outs['kl']['obj'].mean()
     metrics['model_util_kl'] = outs['kl']['util'].mean()
     prior_dist = self.rssm.get_dist(outs['prior'])
     post_dist = self.rssm.get_dist(outs['post'])
+    #if full:
     metrics['prior_subj_ent'] = prior_dist['subj'].entropy().mean()
     metrics['post_subj_ent'] = post_dist['subj'].entropy().mean()
     metrics['prior_obj_ent'] = prior_dist['obj'].entropy().mean()

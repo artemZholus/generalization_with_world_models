@@ -87,11 +87,11 @@ class Agent(common.Module):
     return outputs, state
 
   @tf.function
-  def train(self, data, state=None, do_wm_step=True, do_ac_step=True):
+  def train(self, data, state=None, do_wm_step=True, do_ac_step=True, full=True):
     print('calling train agent')
     metrics = {}
     if do_wm_step:
-      state, outputs, mets = self.wm.train(data, state)
+      state, outputs, mets = self.wm.train(data, state, full=full)
     else:
       state, outputs = self.wm.observe(data, state)
     if do_wm_step:

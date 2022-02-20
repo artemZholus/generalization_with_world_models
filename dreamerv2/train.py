@@ -80,6 +80,7 @@ if config.precision == 16:
 print('Logdir', logdir)
 train_replay = common.Replay(logdir / 'train_replay', config.replay_size, **config.replay)
 eval_replay = common.Replay(logdir / 'eval_replay', config.time_limit or 1, **config.replay)
+eval_rand_replay = common.Replay(logdir / 'eval_rand_replay', config.time_limit or 1, **config.replay)
 if config.multitask.mode != 'none':
   mt_path = pathlib.Path(config.multitask.data_path).expanduser()
   mt_replay = common.Replay(mt_path, load=config.keep_ram, **config.replay)
@@ -137,7 +138,13 @@ def per_episode(ep, mode):
     task_name = ep['task_name'][0]
   score = float(ep['reward'].astype(np.float64).sum())
   print(f'{mode.title()} episode has {length} steps and return {score:.1f}.')
-  replay_ = dict(train=train_replay, eval=eval_replay)[mode if 'eval' not in mode else 'eval']
+  if mode == 'train':
+    replay_ = train_replay
+  elif mode == 'rand_eval':
+    replay_ = eval_rand_replay
+  else:
+    replay_ = eval_replay
+  # replay_ = dict(train=train_replay, eval=eval_replay)[mode if 'eval' not in mode else 'eval']
   ep_file = replay_.add(ep)
   if mode == 'train' and config.multitask.bootstrap:
     # mt_replay.add(ep)
@@ -312,15 +319,9 @@ if config.embeddings.trainer.mode == 'sa_dyne':
 
 agnt = agent.Agent(config, logger, action_space, step, train_dataset)
 if 'multitask' not in config or config.multitask.mode == 'none':
-  batch_proposal = proposal.TrainProposal(config, agnt, step, train_dataset)
+  batch_proposal = proposal.BatchPrioritizer(config, agnt, step, train_dataset)
 elif config.multitask.mode == 'raw':
   batch_proposal = proposal.RawMultitask(config, agnt, step, train_dataset, mt_replay)
-elif config.multitask.mode == 'return':
-  batch_proposal = proposal.ReturnBasedProposal(config, agnt, step, train_dataset, mt_replay)
-elif config.multitask.mode == 'addressing':
-  batch_proposal = proposal.RetrospectiveAddressing(config, agnt, step, train_dataset, mt_replay)
-elif config.multitask.mode == 'addressing_dyne':
-  batch_proposal = proposal.DyneRetrospectiveAddressing(config, agnt, step, train_dataset, mt_replay, trainer.dyne_encoder)
 print('Agent created')
 if (logdir / 'variables.pkl').exists() or config.agent_path != 'none' or config.wm_path != 'none' or config.ac_path != 'none':
   if config.wm_path != 'none':
