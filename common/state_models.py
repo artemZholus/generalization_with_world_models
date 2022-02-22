@@ -593,12 +593,13 @@ class DualReasoner(RSSM):
       task_vec = self._cast(task_vec)
       ustate = tf.concat([ustate, task_vec], -1)
     utility = self.condition_model.imagine(ustate, sample=sample)
-    if task_vec is not None:
-      ustoch = self._cast(utility['stoch'])
-      ctask_vec = self._cast(task_vec)
-      prior_update = tf.concat([ustoch, ctask_vec], -1)
-    else:
-      prior_update = self._cast(utility['stoch'])
+    # if task_vec is not None:
+    #   ustoch = self._cast(utility['stoch'])
+    #   ctask_vec = self._cast(task_vec)
+    #   prior_update = tf.concat([ustoch, ctask_vec], -1)
+    # else:
+    #   prior_update = self._cast(utility['stoch'])
+    prior_update = self._cast(utility['stoch'])
     obj_prior = self.obj_reasoner.img_step(prev_state=obj_state, 
                                            prior_update=prior_update,
                                            sample=sample)
