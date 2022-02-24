@@ -21,7 +21,7 @@ class WorldModel(common.Module):
     self.model_opt = common.Optimizer('model', **config.model_opt)
     self.dtype = prec.global_policy().compute_dtype
 
-  def train(self, data, state=None):
+  def train(self, data, state=None, **kwargs):
     print('calling train wm')
     with tf.GradientTape() as model_tape:
       model_loss, state, outputs, metrics = self.loss(data, state)
@@ -88,12 +88,8 @@ class WorldModel(common.Module):
 
   def mut_inf(self, post, prior):
     metrics = {
-      'mi_q_subj': self.rssm.mut_inf(post, kind='subj'),
-      'mi_q_util': self.rssm.mut_inf(post, kind='utility'),
-      'mi_q_obj': self.rssm.mut_inf(post, kind='obj'),
-      'mi_p_subj': self.rssm.mut_inf(prior, kind='subj'),
-      'mi_p_util': self.rssm.mut_inf(prior, kind='utility'),
-      'mi_p_obj': self.rssm.mut_inf(prior, kind='obj'),
+      'mi_q': self.rssm.mut_inf(post),
+      'mi_p': self.rssm.mut_inf(prior),
     }
     return metrics
 
@@ -136,7 +132,8 @@ class WorldModel(common.Module):
       obj_image = obj * obs['image'][..., 3:]
       input_image = tf.concat([subj_image, obj_image], axis=-1)
       obs['input_image'] = input_image
-      obs['image'] = obs['image'][..., :3]
+      # obs['image'] = obs['image'][..., :3]
+      obs['image'] = input_image
     else:
       obs['image'] = tf.cast(obs['image'][..., :3], self.dtype) / 255.0 - 0.5
     obs['reward'] = getattr(tf, self.config.clip_rewards)(obs['reward'])
@@ -349,13 +346,13 @@ class DreamerWorldModel(WorldModel):
     metrics['post_ent'] = self.rssm.get_dist(outs['post']).entropy().mean()
     return model_loss, post, outs, metrics
 
-  def imagine(self, policy, start, horizon):
-    feats, states, actions, discount = super().imagine(policy, start, horizon)
+  def imagine(self, policy, start, horizon, **kwargs):
+    pfeats, feats, states, actions, discount = super().imagine(policy, start, horizon, **kwargs)
     flatten = lambda x: x.reshape([-1] + list(x.shape[2:]))
     start = tf.nest.map_structure(flatten, start)
     states = {k: tf.concat([
         start[k][None], v[:-1]], 0) for k, v in states.items()}
-    return feats, states, actions, discount
+    return pfeats, feats, states, actions, discount
 
 
 class CausalWorldModel(WorldModel):

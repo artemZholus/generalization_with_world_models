@@ -24,6 +24,21 @@ class RSSM(common.PostPriorNet):
     self._cell = common.GRUCell(self._deter, norm=True)
     self._cast = lambda x: tf.cast(x, prec.global_policy().compute_dtype)
 
+  def mut_inf(self, sample):
+    NUM_SAMPLES = 1
+    dist = self.get_dist(sample)
+    stoch = dist.sample(NUM_SAMPLES)
+    curr_prob = dist.log_prob(stoch)
+    mu, sigma = sample['mean'], sample['std']
+    mu = tf.expand_dims(mu, 2)
+    sigma = tf.expand_dims(sigma, 2)
+    expand_dist = self.get_dist({'mean': mu, 'std': sigma})
+    stoch = tf.expand_dims(stoch, 2)
+    prob = expand_dist.log_prob(stoch)
+    marginal_prob = prob.logsumexp(2) - math.log(prob.shape[2])
+    mi = (curr_prob - marginal_prob).mean()
+    return mi
+
   def initial(self, batch_size):
     dtype = prec.global_policy().compute_dtype
     if self._discrete:
@@ -53,7 +68,7 @@ class RSSM(common.PostPriorNet):
     return post, prior
 
   @tf.function
-  def imagine(self, action, state=None):
+  def imagine(self, action, state=None, task_vec=None):
     swap = lambda x: tf.transpose(x, [1, 0] + list(range(2, len(x.shape))))
     if state is None:
       state = self.initial(tf.shape(action)[0])
@@ -83,7 +98,7 @@ class RSSM(common.PostPriorNet):
     return dist
 
   @tf.function
-  def obs_step(self, prev_state, prev_action, embed, sample=True):
+  def obs_step(self, prev_state, prev_action, embed, sample=True, task_vec=None):
     prior = self.img_step(prev_state, prev_action, sample)
     x = tf.concat([prior['deter'], embed], -1)
     x = self.get('obs_out', tfkl.Dense, self._hidden, self._act)(x)
@@ -94,7 +109,7 @@ class RSSM(common.PostPriorNet):
     return post, prior
 
   @tf.function
-  def img_step(self, prev_state, prev_action, sample=True):
+  def img_step(self, prev_state, prev_action, sample=True, task_vec=None):
     prev_stoch = self._cast(prev_state['stoch'])
     prev_action = self._cast(prev_action)
     if self._discrete:
