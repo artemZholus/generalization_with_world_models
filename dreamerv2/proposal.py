@@ -34,9 +34,9 @@ class TrainProposal:
         _, mets = agnt.train(batch, do_wm_step=do_wm_step, do_ac_step=do_ac_step, full=full)
       mets.update(metrics)
       return _, mets
-    
+
     def propose_batch(self, agnt, metrics):
-      return next(self.dataset), not self.train_ac_only, not self.train_wm_only
+      return next(self.dataset), not self.train_ac_only, not self.train_wm_only, True
 
     def before_train(self):
       pass
@@ -51,7 +51,7 @@ class EvalTrainer(TrainProposal):
   def __init__(self, config, agnt, step, dataset, eval_ds):
     super().__init__(config, agnt, step, dataset)
     self.batch = None
-    self.eval_dataset = eval_ds 
+    self.eval_dataset = eval_ds
     self.step = tf.Variable(0, dtype=tf.int64)
     self.eval_rate = 0.2
 
@@ -59,11 +59,11 @@ class EvalTrainer(TrainProposal):
     if np.random.uniform() > self.eval_rate:
       batch = next(self.dataset)
       do_wm_step, do_ac_step = not self.train_ac_only, not self.train_wm_only
-      return batch, do_wm_step, do_ac_step, True 
+      return batch, do_wm_step, do_ac_step, True
     else:
       batch = next(self.eval_dataset)
       do_wm_step, do_ac_step = not self.train_ac_only, False
-      return batch, do_wm_step, do_ac_step, True 
+      return batch, do_wm_step, do_ac_step, True
 
 
 class BatchPrioritizer(TrainProposal):
@@ -104,11 +104,11 @@ class BatchPrioritizer(TrainProposal):
       obj = True # temporarily train whole model
       self.step.assign_add(1)
     return batch
-  
+
   def propose_batch(self, agnt, metrics):
     batch = next(self.dataset)
     do_wm_step, do_ac_step = not self.train_ac_only, not self.train_wm_only
-    
+
     # if self.step < 5000: # start after 3k steps
     #   return batch, do_wm_step, do_ac_step, True
     batch = self.update(batch)
@@ -120,7 +120,7 @@ class RawMultitask(TrainProposal):
     # path = pathlib.Path(config.multitask.data_path).expanduser()
     self.replay = replay
     self.multitask_dataset = iter(replay.dataset(**config.multitask.dataset))
-  
+
   def select(self, logits, multitask_embedding, multitask_batch, soft, n=1):
     if soft:
       dist = common.OneHotDist(logits=logits)
@@ -160,8 +160,8 @@ class RawMultitask(TrainProposal):
       multitask_batch[k] = tf.cast(multitask_batch[k], tf.float32)
     multitask_batch = {
       k: tf.concat([
-        task_batch[k][:task_part], tf.stop_gradient(multitask_batch[k])[:multitask_part]], 
-        0) 
+        task_batch[k][:task_part], tf.stop_gradient(multitask_batch[k])[:multitask_part]],
+        0)
       for k in keys
     }
     multitask_batch['discount'] = task_batch['discount']
