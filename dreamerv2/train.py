@@ -80,7 +80,7 @@ if config.precision == 16:
 print('Logdir', logdir)
 train_replay = common.Replay(logdir / 'train_replay', config.replay_size, **config.replay)
 eval_replay = common.Replay(logdir / 'eval_replay', config.time_limit or 1, **config.replay)
-eval_rand_replay = common.Replay(logdir / 'eval_rand_replay', config.time_limit or 1, **config.replay)
+# eval_rand_replay = common.Replay(logdir / 'eval_rand_replay', config.time_limit or 1, **config.replay)
 if config.multitask.mode != 'none':
   mt_path = pathlib.Path(config.multitask.data_path).expanduser()
   mt_replay = common.Replay(mt_path, load=config.keep_ram, **config.replay)
@@ -140,8 +140,8 @@ def per_episode(ep, mode):
   print(f'{mode.title()} episode has {length} steps and return {score:.1f}.')
   if mode == 'train':
     replay_ = train_replay
-  elif mode == 'rand_eval':
-    replay_ = eval_rand_replay
+  # elif mode == 'rand_eval':
+  #   replay_ = eval_rand_replay
   else:
     replay_ = eval_replay
   # replay_ = dict(train=train_replay, eval=eval_replay)[mode if 'eval' not in mode else 'eval']
@@ -286,8 +286,8 @@ def ev_per_ep(ep, mode='eval'):
   global kind
   if kind == 'policy':
     per_episode(ep, mode='eval')
-  elif kind == 'random':
-    per_episode(ep, mode='rand_eval')
+  # elif kind == 'random':
+  #   per_episode(ep, mode='rand_eval')
 eval_driver.on_episode(ev_per_ep)
 
 prefill = max(0, config.prefill - train_replay.total_steps)
@@ -307,7 +307,7 @@ if prefill:
 
 print('Create agent.')
 train_dataset = iter(train_replay.dataset(**config.dataset))
-train_rand_dataset = iter(eval_rand_replay.dataset(**config.dataset))
+# train_rand_dataset = iter(eval_rand_replay.dataset(**config.dataset))
 eval_dataset = iter(eval_replay.dataset(**config.dataset))
 if config.embeddings.trainer.mode == 'sa_dyne':
   path = pathlib.Path(config.embeddings.data_path).expanduser()
@@ -329,7 +329,8 @@ if config.embeddings.trainer.mode == 'sa_dyne':
 
 agnt = agent.Agent(config, logger, action_space, step, train_dataset)
 if 'multitask' not in config or config.multitask.mode == 'none':
-  batch_proposal = proposal.EvalTrainer(config, agnt, step, train_dataset, train_rand_dataset)
+  # batch_proposal = proposal.EvalTrainer(config, agnt, step, train_dataset, train_rand_dataset)
+  batch_proposal = proposal.TrainProposal(config, agnt, step, train_dataset)
 elif config.multitask.mode == 'raw':
   batch_proposal = proposal.RawMultitask(config, agnt, step, train_dataset, mt_replay)
 print('Agent created')
@@ -386,8 +387,8 @@ while step < config.steps:
       wandb.log({f"eval_openl": wandb.Video(video, fps=30, format="gif")})
   eval_policy = functools.partial(agnt.policy, mode='eval')
   eval_driver(eval_policy, episodes=config.eval_eps)
-  kind = 'random'
-  eval_driver(random_agent, episodes=config.eval_eps)
+  # kind = 'random'
+  # eval_driver(random_agent, episodes=config.eval_eps)
   kind = 'policy'
   if config.iid_eval:
     iid_eval_driver(eval_policy, episodes=config.eval_eps)
