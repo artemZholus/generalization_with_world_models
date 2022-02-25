@@ -5,6 +5,7 @@ import os
 import pathlib
 import pickle
 import sys
+import uuid
 import warnings
 from functools import partial
 from copy import deepcopy as copy
@@ -67,12 +68,7 @@ if config.multitask.bootstrap:
   config = config.update({
     'multitask.data_path': os.path.join(config.logdir, "train_replay")
   })
-if config.logging.wdb and '{run_id}' in config.logdir:
-    config = config.update({'logdir': config.logdir.format(run_id=f'{wandb.run.name}_{wandb.run.id}')})
-    if '{run_id}' in config.multitask.data_path:
-      config = config.update(
-        {'multitask.data_path': config.multitask.data_path.format(run_id=f'{wandb.run.name}_{wandb.run.id}')}
-      )
+config = config.update({'logdir': config.logdir.format(run_id=str(uuid.uuid4().hex))})
 logdir = pathlib.Path(config.logdir).expanduser()
 config = config.update(
     steps=config.steps // config.action_repeat,
@@ -94,12 +90,6 @@ if config.precision == 16:
 print('Logdir', logdir)
 train_replay = common.Replay(logdir / 'train_replay', config.replay_size, **config.replay)
 eval_replay = common.Replay(logdir / 'eval_replay', config.time_limit or 1, **config.replay)
-# if config.multitask.mode != 'none':
-#   mt_path = pathlib.Path(config.multitask.data_path).expanduser()
-#   mt_replay = common.Replay(mt_path, load=config.keep_ram, **config.replay)
-# else:
-#   mt_replay = None
-# step = elements.Counter(train_replay.total_steps)
 step = elements.Counter(0)
 outputs = [
     # elements.TerminalOutput(),
@@ -127,7 +117,7 @@ def make_env(config, mode, **kws):
         life_done=False, sticky_actions=True, all_actions=True)
     env = common.OneHotAction(env)
   elif suite == 'metaworld':
-    if mode != 'eval':
+    if mode == 'eval':
       # in eval we freeze each worker to have a fixed env type
       if 'worker_id' in kws:
         del kws['worker_id']
@@ -145,10 +135,10 @@ def make_env(config, mode, **kws):
   env = common.ResetObs(env)
   return env
 
-freezed_replay = False
+froze_replay = False
 
 def per_episode(ep, mode):
-  global freezed_replay
+  global froze_replay
   length = len(ep['reward']) - 1
   task_name = None
   if 'task_name' in ep:
@@ -156,7 +146,7 @@ def per_episode(ep, mode):
   score = float(ep['reward'].astype(np.float64).sum())
   print(f'{mode.title()} episode has {length} steps and return {score:.1f}.')
   replay_ = dict(train=train_replay, eval=eval_replay)[mode if 'eval' not in mode else 'eval']
-  if not freezed_replay:
+  if not froze_replay:
     ep_file = replay_.add(ep)
   logger.scalar(f'{mode}_transitions', replay_.num_transitions)
   logger.scalar(f'{mode}_return', score)
@@ -172,31 +162,9 @@ def per_episode(ep, mode):
     f'eval_env_step': eval_replay.num_transitions,
     f'{config.logging.env_name}/{prefix}_length': length
   }
-  # if config.logging.wdb:
-  #   wandb.log(summ)
   should = {'train': should_video_train, 'eval': should_video_eval}[mode if 'eval' not in mode else 'eval']
   if should(step):
     logger.video(f'{mode}_policy', ep['image'])
-    # if should_wdb_video(step) and config.logging.wdb:
-    #   video = np.transpose(ep['image'], (0, 3, 1, 2))
-    #   videos = []
-    #   rows = video.shape[1] // 3
-    #   for row in range(rows):
-    #     videos.append(video[:, row * 3: (row + 1) * 3])
-    #   video = np.concatenate(videos, 3)
-    #   # if config.logging.wdb:
-    #   #   wandb.log({f"{mode}_policy": wandb.Video(video, fps=30, format="gif")})
-    #   # TODO: save video to gif
-    #   video = np.transpose(ep['segmentation'], (0, 3, 1, 2)).astype(np.float)
-    #   video *= 100
-    #   videos = []
-    #   rows = video.shape[1]
-    #   for row in range(rows):
-    #     videos.append(video[:, row: row + 1])
-    #   video = np.concatenate(videos, 3)
-    #   # if config.logging.wdb:
-    #   #   wandb.log({f"{mode}_segm_policy": wandb.Video(video, fps=30, format="gif")})  
-    #   # TODO: save video to gif
   logger.write()
 
 print('Create envs.')
@@ -204,16 +172,36 @@ print('Create envs.')
 # eval_envs = [make_env(config, 'eval') for _ in range(config.num_envs)]
 dummy_env = make_env(config, 'train')
 action_space = dummy_env.action_space['action']
+def iter_tasks(kind):
+  base = np.array([0.02, 0.9 , 0.  , 0.  ])
+  while True:
+    if kind == 'umbrella':
+      if np.random.rand() > 0.5:
+        angle = np.random.randint(135, 221)
+      else:
+        angle = np.random.randint(315, 401) % 360
+    elif kind == 'monotonic':
+      angle = np.random.randint(0, 236)
+    elif kind == 'full':
+      angle = np.random.randint(0, 361)
+    else:
+      raise ValueError(f'Unsupported kind: {kind}')
+    print(f'next angle: {angle}')
+    vec = copy(base)
+    vec[-1] = angle
+    yield vec
+
+def procedural_env_ctor(mode, **kws):
+  env = make_env(config, mode, **kws)
+  env.set_tasks_generator(
+    iter(iter_tasks(kind='monotonic' if 'monotonic' in config.train_tasks_file else 'umbrella'))
+  )
+  return env
 parallel = 'process' if config.parallel else 'local'
 train_driver = common.Driver(
-  partial(make_env, config, 'train'), num_envs=config.num_envs, 
+  partial(procedural_env_ctor, 'train'), num_envs=config.num_envs,
   mode=parallel, lock=config.num_envs > 1, lockfile=config.train_tasks_file,
 )
-# task_vec = None
-# for env in train_driver._envs:
-#   env.randomize_tasks = False
-#   if task_vec is None:
-#     task_vec = env.get_task_vector()
 train_driver.on_episode(lambda ep: per_episode(ep, mode='train'))
 train_driver.on_step(lambda _: step.increment())
 syncfile = None
@@ -233,8 +221,12 @@ def generate_tasks(name, kind):
     high = np.random.randint(135, 221, 24)
     low = np.random.randint(315, 401, 24) % 360
     rng = np.concatenate([high, low], 0)
-  if kind == 'monotonic':
+  elif kind == 'monotonic':
     rng = np.random.randint(0, 236, 48)
+  elif kind == 'full':
+    rng = np.random.randint(0, 361, 72)
+  else:
+    raise ValueError(f'Unsupported kind: {kind}')
   tasks = []
   for val in rng:
     vec = copy(base)
@@ -249,6 +241,9 @@ if config.iid_eval:
       kind='monotonic' if 'monotonic' in config.train_tasks_file else 'umbrella')
     env.create_tasks(params)
     return env
+
+if config.iid_eval:
+  lockfile = config.train_tasks_file if config.test_tasks_file is None else config.test_tasks_file
   iid_eval_driver = common.Driver(
     env_ctor, num_envs=config.num_envs, 
     mode=parallel, lock=config.num_envs > 1,
@@ -275,19 +270,23 @@ if prefill:
   eval_driver(random_agent, episodes=1)
   train_driver.reset()
   eval_driver.reset()
-freezed_replay = True
+froze_replay = False
 print('Create agent.')
 train_dataset = iter(train_replay.dataset(**config.dataset))
 # eval_dataset = iter(eval_replay.dataset(**config.dataset))
 
 agnt = agent.Agent(config, logger, action_space, step, train_dataset)
 print('Agent created')
-if (logdir / 'variables.pkl').exists() or config.agent_path != 'none':
-  if config.agent_path == 'none':
+if (logdir / 'variables.pkl').exists() or config.agent_path != 'none' or config.wm_path != 'none' or config.ac_path != 'none':
+  if config.wm_path != 'none':
+    agnt.wm.load(config.wm_path)
+  if config.ac_path != 'none':
+    agnt._task_behavior.load(config.ac_path)
+  if config.ac_path == 'none' and config.wm_path == 'none' and config.agent_path == 'none':
     agnt.load(logdir / 'variables.pkl')
-  else:
+  elif config.ac_path == 'none' and config.wm_path == 'none':
     agnt.load(config.agent_path)
-    common.tfutils.reset_model(agnt._task_behavior)
+    # common.tfutils.reset_model(agnt._task_behavior)
 else:
   config.pretrain and print('Pretrain agent.')
   for _ in tqdm(range(config.pretrain)):
