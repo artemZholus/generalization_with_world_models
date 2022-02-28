@@ -498,7 +498,7 @@ class Reasoner2Rnn(RSSM):
 class DualReasoner(RSSM):
   def __init__(
     self, stoch=30, cond_stoch=50, deter=200, hidden=200, discrete=False, act=tf.nn.elu,
-    std_act='softplus', min_std=0.1, cond_kws=None, policy_feats=None
+    std_act='softplus', min_std=0.1, cond_kws=None, heads_feats=None
   ):
     self._stoch = stoch
     self._deter = deter
@@ -507,7 +507,7 @@ class DualReasoner(RSSM):
     self._act = getattr(tf.nn, act) if isinstance(act, str) else act
     self._std_act = std_act
     self._min_std = min_std
-    self.policy_feats = [] if policy_feats is None else policy_feats
+    self.heads_feats = {} if heads_feats is None else heads_feats
     self._cast = lambda x: tf.cast(x, prec.global_policy().compute_dtype)
     self.obj_reasoner = ReasonerMLP(stoch=stoch, deter=deter, hidden=hidden, discrete=discrete, act=act, std_act=std_act, min_std=min_std)
     # self.obj_reasoner = Reasoner2Rnn(stoch=stoch, deter=deter, hidden=hidden, discrete=discrete, act=act, std_act=std_act, min_std=min_std)
@@ -609,25 +609,20 @@ class DualReasoner(RSSM):
     return self.bottom_up_step(state, action, task_vec=task_vec, sample=sample)
 
   def get_feat(self, state, key=None, task_vec=None):
-    if key is not None and 'subj' in key:
-      subj_feat = self.subj_reasoner.get_feat(state['subj'])
-      return subj_feat
-    elif key is not None and 'obj' in key:
-      obj_feat = self.obj_reasoner.get_feat(state['obj'])
-      return obj_feat
-    elif key is not None and 'policy' in key:
-      features = []
-      for feat in self.policy_feats:
-        if feat == 'subj':
-          feat_vec = self.subj_reasoner.get_feat(state['subj'])
-        elif feat == 'obj':
-          feat_vec = self.obj_reasoner.get_feat(state['obj'])
-        elif feat == 'utility':
-          feat_vec = self._cast(state['utility']['stoch'])
-        elif feat == 'task_vec':
-          feat_vec = self._cast(task_vec)
-        features.append(feat_vec)
-      return tf.concat(features, -1)
+    features = []
+    for head, feats in self.heads_feats.items():
+      if key is not None and head in key:
+        for feat in feats:
+          if feat == 'subj':
+            feat_vec = self.subj_reasoner.get_feat(state['subj'])
+          elif feat == 'obj':
+            feat_vec = self.obj_reasoner.get_feat(state['obj'])
+          elif feat == 'util':
+            feat_vec = self.condition_model.get_feat(state['utility'])
+          elif feat == 'task_vec':
+            feat_vec = self._cast(task_vec)
+          features.append(feat_vec)
+        return tf.concat(features, -1)
     else:
       subj_feat = self.subj_reasoner.get_feat(state['subj'])
       obj_feat = self.obj_reasoner.get_feat(state['obj'])

@@ -94,7 +94,7 @@ defaults:
   slow_target_update: 100
   slow_target_fraction: 1
 
-  policy_feats: [subj, utility, obj]
+  heads_feats: {subj: ['subj'], obj: ['obj'], policy: ['subj', 'obj', 'util'], reward: ['subj', 'obj', 'util']}
 
   zero_shot_agent:
     enabled: False

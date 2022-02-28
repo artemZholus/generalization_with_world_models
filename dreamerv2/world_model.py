@@ -364,7 +364,7 @@ class CausalWorldModel(WorldModel):
     super().__init__(step, config)
     shape = config.image_size + (config.img_channels,)
     self.rssm = common.DualReasoner(**config.rssm, 
-      cond_stoch=config.cond_model_size, cond_kws=config.cond_kws, policy_feats=config.policy_feats)
+      cond_stoch=config.cond_model_size, cond_kws=config.cond_kws, heads_feats=config.heads_feats)
     self.encoder = common.DualConvEncoder(config.subj_encoder, config.obj_encoder, config.obj_features)
     self.heads['subj_image'] = common.ConvDecoder(shape, **config.decoder)
 
