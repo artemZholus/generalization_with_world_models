@@ -393,6 +393,8 @@ causal:
   decoder.act: elu
   decoder.depth: 32
   kl.balance: 0.5
+  kl.obj.free: 0.0
+  loss_scales.obj_kl: 3
   model_opt.lr: 0.0006
   obj_encoder.act: elu
   obj_encoder.depth: 32
