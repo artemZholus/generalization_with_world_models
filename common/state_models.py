@@ -555,7 +555,7 @@ class DualReasoner(RSSM):
     return {'subj': subj_post, 'obj': obj_post, 'utility': util_post}
 
   def mut_inf(self, sample, kind='obj'):
-    NUM_SAMPLES = 5
+    NUM_SAMPLES = 4
     dist = self.get_dist(sample)
     stoch = dist[kind].sample(NUM_SAMPLES)
     curr_prob = dist[kind].log_prob(stoch)
