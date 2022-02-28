@@ -94,7 +94,8 @@ defaults:
   slow_target_update: 100
   slow_target_fraction: 1
 
-  policy_feats: [subj, utility, obj]
+  policy_feats: [subj, utility, obj] # possible values: [subj, utility, obj, task]
+  value_feats: [subj, utility, obj]
 
   zero_shot_agent:
     enabled: False
@@ -405,8 +406,8 @@ causal:
   # cond_kws.discrete: 16
   cond_model_size: 200
   cond_kws.discrete: 0
-  iid_eval: True
-  steps: 4e6
+  iid_eval: False
+  steps: 2e6
   world_model: causal
 
 mt10:

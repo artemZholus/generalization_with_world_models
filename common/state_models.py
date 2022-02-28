@@ -498,7 +498,7 @@ class Reasoner2Rnn(RSSM):
 class DualReasoner(RSSM):
   def __init__(
     self, stoch=30, cond_stoch=50, deter=200, hidden=200, discrete=False, act=tf.nn.elu,
-    std_act='softplus', min_std=0.1, cond_kws=None, policy_feats=None
+    std_act='softplus', min_std=0.1, cond_kws=None, policy_feats=None, value_feats=None
   ):
     self._stoch = stoch
     self._deter = deter
@@ -508,6 +508,7 @@ class DualReasoner(RSSM):
     self._std_act = std_act
     self._min_std = min_std
     self.policy_feats = [] if policy_feats is None else policy_feats
+    self.value_feats = [] if value_feats is None else value_feats
     self._cast = lambda x: tf.cast(x, prec.global_policy().compute_dtype)
     self.obj_reasoner = ReasonerMLP(stoch=stoch, deter=deter, hidden=hidden, discrete=discrete, act=act, std_act=std_act, min_std=min_std)
     # self.obj_reasoner = Reasoner2Rnn(stoch=stoch, deter=deter, hidden=hidden, discrete=discrete, act=act, std_act=std_act, min_std=min_std)
@@ -599,7 +600,7 @@ class DualReasoner(RSSM):
   def img_step(self, state, action, task_vec=None, sample=True):
     return self.bottom_up_step(state, action, task_vec=task_vec, sample=sample)
 
-  def get_feat(self, state, key=None):
+  def get_feat(self, state, key=None, task_vec=None):
     if key is not None and 'subj' in key:
       subj_feat = self.subj_reasoner.get_feat(state['subj'])
       return subj_feat
@@ -615,6 +616,21 @@ class DualReasoner(RSSM):
           feat_vec = self.obj_reasoner.get_feat(state['obj'])
         elif feat == 'utility':
           feat_vec = self._cast(state['utility']['stoch'])
+        elif feat == 'task':
+          feat_vec = self._cast(task_vec)
+        features.append(feat_vec)
+      return tf.concat(features, -1)
+    elif key is not None and 'value' in key:
+      features = []
+      for feat in self.value_feats:
+        if feat == 'subj':
+          feat_vec = self.subj_reasoner.get_feat(state['subj'])
+        elif feat == 'obj':
+          feat_vec = self.obj_reasoner.get_feat(state['obj'])
+        elif feat == 'utility':
+          feat_vec = self._cast(state['utility']['stoch'])
+        elif feat == 'task':
+          feat_vec = self._cast(task_vec)
         features.append(feat_vec)
       return tf.concat(features, -1)
     else:

@@ -65,7 +65,7 @@ class Agent(common.Module):
     else:
       task_vec = None
     latent, _ = self.wm.rssm.obs_step(latent, action, embed, task_vec=task_vec, sample=sample)
-    feat = self.wm.rssm.get_feat(latent, key='policy')
+    feat = self.wm.rssm.get_feat(latent, key='policy', task_vec=task_vec)
     behaviour = self._task_behavior
     expl_behavour = self._expl_behavior
     if second_agent:
@@ -138,30 +138,30 @@ class ActorCritic(common.Module):
     metrics = {}
     hor = self.config.imag_horizon
     with tf.GradientTape() as actor_tape:
-      pfeat, rfeat, state, action, disc = world_model.imagine(self.actor, start, hor, task_vec=task_vec)
+      pfeat, vfeat, rfeat, state, action, disc = world_model.imagine(self.actor, start, hor, task_vec=task_vec)
       reward = reward_fn(rfeat, state, action)
-      target, weight, mets1 = self.target(pfeat, action, reward, disc)
-      actor_loss, mets2 = self.actor_loss(pfeat, action, target, weight)
+      target, weight, mets1 = self.target(vfeat, action, reward, disc)
+      actor_loss, mets2 = self.actor_loss(pfeat, vfeat, action, target, weight)
     with tf.GradientTape() as critic_tape:
-      critic_loss, mets3 = self.critic_loss(pfeat, action, target, weight)
+      critic_loss, mets3 = self.critic_loss(vfeat, action, target, weight)
     metrics.update(self.actor_opt(actor_tape, actor_loss, self.actor))
     metrics.update(self.critic_opt(critic_tape, critic_loss, self.critic))
     metrics.update(**mets1, **mets2, **mets3)
     self.update_slow_target()  # Variables exist after first forward pass.
     return metrics
 
-  def actor_loss(self, feat, action, target, weight):
+  def actor_loss(self, feat, vfeat, action, target, weight):
     print('calling a loss')
     metrics = {}
     policy = self.actor(tf.stop_gradient(feat))
     if self.config.actor_grad == 'dynamics':
       objective = target
     elif self.config.actor_grad == 'reinforce':
-      baseline = self.critic(feat[:-1]).mode()
+      baseline = self.critic(vfeat[:-1]).mode()
       advantage = tf.stop_gradient(target - baseline)
       objective = policy.log_prob(action)[:-1] * advantage
     elif self.config.actor_grad == 'both':
-      baseline = self.critic(feat[:-1]).mode()
+      baseline = self.critic(vfeat[:-1]).mode()
       advantage = tf.stop_gradient(target - baseline)
       objective = policy.log_prob(action)[:-1] * advantage
       mix = common.schedule(self.config.actor_grad_mix, self.step)

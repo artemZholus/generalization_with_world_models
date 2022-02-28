@@ -69,7 +69,7 @@ class WorldModel(common.Module):
       assert len(kl_loss.shape) == 0
       losses = {'kl': kl_loss}
     for name, head in self.heads.items():
-      feat = self.rssm.get_feat(post, key=name)
+      feat = self.rssm.get_feat(post, key=name, task_vec=data.get('task_vector', None))
       grad_head = (name in self.config.grad_heads)
       inp = feat if grad_head else tf.stop_gradient(feat)
       like = tf.cast(head(inp).log_prob(data[name]), tf.float32)
@@ -104,23 +104,25 @@ class WorldModel(common.Module):
     start = tf.nest.map_structure(flatten, start)
     task_vec = flatten(task_vec)
     def step(prev, _):
-      state, _, _, _ = prev
-      pfeat = self.rssm.get_feat(state, key='policy')
+      state, _, _, _, _ = prev
+      pfeat = self.rssm.get_feat(state, key='policy', task_vec=task_vec)
+      vfeat = 0 * self.rssm.get_feat(state, key='value', task_vec=task_vec)
       rfeat = self.rssm.get_feat(state)
       action = policy(tf.stop_gradient(pfeat)).sample()
       succ = self.rssm.img_step(state, action, task_vec=task_vec)
-      return succ, pfeat, rfeat, action
-    pfeat = 0 * self.rssm.get_feat(start, key='policy')
+      return succ, pfeat, vfeat, rfeat, action
+    pfeat = 0 * self.rssm.get_feat(start, key='policy', task_vec=task_vec)
+    vfeat = 0 * self.rssm.get_feat(start, key='value', task_vec=task_vec)
     rfeat = 0 * self.rssm.get_feat(start)
     action = policy(pfeat).mode()
-    succs, pfeats, rfeats, actions = common.static_scan(
-        step, tf.range(horizon), (start, pfeat, rfeat, action))
+    succs, pfeats, vfeats, rfeats, actions = common.static_scan(
+        step, tf.range(horizon), (start, pfeat, vfeat, rfeat, action))
     states = succs
     if 'discount' in self.heads:
       discount = self.heads['discount'](rfeats).mean()
     else:
       discount = self.config.discount * tf.ones_like(pfeats[..., 0])
-    return pfeats, rfeats, states, actions, discount
+    return pfeats, vfeats, rfeats, states, actions, discount
   
   @tf.function
   def preprocess(self, obs):
@@ -158,7 +160,7 @@ class WorldModel(common.Module):
     else:
       task_vector = None
     states, _ = self.rssm.observe(embed, action, task_vector=task_vector)
-    feat = self.rssm.get_feat(states, key=img_key)
+    feat = self.rssm.get_feat(states, key=img_key, task_vec=task_vector)
     recon = self.heads[img_key](feat).mode()[:6]
     
     last = lambda x: x[:, -1]
@@ -166,7 +168,7 @@ class WorldModel(common.Module):
     if task_vector is not None:
       task_vector = task_vector[:, 5:]
     prior = self.rssm.imagine(data['action'][:6, 5:], init, task_vec=task_vector)
-    feat = self.rssm.get_feat(prior, key=img_key)
+    feat = self.rssm.get_feat(prior, key=img_key, task_vec=task_vector)
     openl = self.heads[img_key](feat).mode()
     model = tf.concat([recon[:, :5] + 0.5, openl + 0.5], 1)
     error = (model - truth + 1) / 2
@@ -363,7 +365,9 @@ class CausalWorldModel(WorldModel):
     super().__init__(step, config)
     shape = config.image_size + (config.img_channels,)
     self.rssm = common.DualReasoner(**config.rssm, 
-      cond_stoch=config.cond_model_size, cond_kws=config.cond_kws, policy_feats=config.policy_feats)
+      cond_stoch=config.cond_model_size, cond_kws=config.cond_kws, policy_feats=config.policy_feats,
+      value_feats=config.value_feats
+    )
     self.encoder = common.DualConvEncoder(config.subj_encoder, config.obj_encoder, config.obj_features)
     self.heads['subj_image'] = common.ConvDecoder(shape, **config.decoder)
 
