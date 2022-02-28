@@ -39,7 +39,7 @@ class WorldModel(common.Module):
     data = self.preprocess(data)
     embed = self.encoder(data)
     post, prior = self.rssm.observe(embed, data['action'], state, task_vector=data.get('task_vector', None))
-    feat = self.rssm.get_feat(post)
+    feat = self.rssm.get_feat(post, key='reward')
     # stoch deter (mean std)/(logit)
     outs = dict(
       embed=embed, feat=feat, post=post,
@@ -107,12 +107,12 @@ class WorldModel(common.Module):
     def step(prev, _):
       state, _, _, _ = prev
       pfeat = self.rssm.get_feat(state, key='policy', task_vec=task_vec)
-      rfeat = self.rssm.get_feat(state)
+      rfeat = self.rssm.get_feat(state, key='reward', task_vec=task_vec)
       action = policy(tf.stop_gradient(pfeat)).sample()
       succ = self.rssm.img_step(state, action, task_vec=task_vec)
       return succ, pfeat, rfeat, action
     pfeat = 0 * self.rssm.get_feat(start, key='policy', task_vec=task_vec)
-    rfeat = 0 * self.rssm.get_feat(start)
+    rfeat = 0 * self.rssm.get_feat(start, key='reward', task_vec=task_vec)
     action = policy(pfeat).mode()
     succs, pfeats, rfeats, actions = common.static_scan(
         step, tf.range(horizon), (start, pfeat, rfeat, action))
