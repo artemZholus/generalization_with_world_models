@@ -71,8 +71,7 @@ defaults:
 
   # Obj-Subj World Model
   subj_strategy: 'instant'
-  cond_model_size: 50 
-  cond_kws: {discrete: 0}
+  cond_kws: {size: 50, hidden: 200, discrete: False, act: elu, layers: 2}
   subj_rssm: {hidden: 400, deter: 400, stoch: 32, discrete: 32, act: elu, std_act: sigmoid2, min_std: 0.1}
   obj_rssm: {hidden: 400, deter: 400, stoch: 32, discrete: 32, act: elu, std_act: sigmoid2, min_std: 0.1}
   subj_encoder: {depth: 48, act: elu, kernels: [4, 4, 4, 4], keys: [subj_image], rect: False}
@@ -179,6 +178,7 @@ dual_v1:
   subj_rssm: {hidden: 200, deter: 200, stoch: 30, discrete: False, act: elu, std_act: sigmoid2, min_std: 0.1}
   rssm: {hidden: 200, deter: 200, stoch: 30, discrete: False, act: elu, std_act: sigmoid2, min_std: 0.1}
   obj_rssm: {hidden: 200, deter: 200, stoch: 30, discrete: False, act: elu, std_act: sigmoid2, min_std: 0.1}
+  cond_kws: {size: 50, hidden: 200, discrete: False, act: elu, layers: 2}
   subj_strategy: 'instant'
   subj_encoder: {depth: 32, act: relu, kernels: [4, 4, 4, 4], keys: [subj_image], rect: False}
   obj_encoder: {depth: 32, act: relu, kernels: [4, 4, 4, 4], keys: [obj_image], rect: False}
@@ -406,7 +406,7 @@ causal:
   reward_head.layers: 3
   # cond_model_size: 32
   # cond_kws.discrete: 16
-  cond_model_size: 200
+  cond_kws.size: 200
   cond_kws.discrete: 0
   iid_eval: False
   steps: 2e6

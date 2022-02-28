@@ -497,9 +497,49 @@ class Reasoner2Rnn(RSSM):
 
 class DualReasoner(RSSM):
   def __init__(
-    self, stoch=30, cond_stoch=50, deter=200, hidden=200, discrete=False, act=tf.nn.elu,
-    std_act='softplus', min_std=0.1, cond_kws=None, policy_feats=None, value_feats=None
+    self, 
+    # these are base kwargs
+    stoch=30, deter=200, hidden=200, discrete=False, act=tf.nn.elu, std_act='softplus', min_std=0.1, 
+    # per layer specific kwargs
+    cond_kws=None, subj_kws=None, obj_kws=None,
+    policy_feats=None, value_feats=None,
   ):
+    # cond_stoch=50,
+    if cond_kws is None:
+      cond_kws = {}
+    else:
+      cond_kws = dict(**cond_kws)
+    cond_kws = dict(cond_kws)
+    cond_kws['hidden'] = cond_kws.get('hidden', hidden)
+    cond_kws['act'] = cond_kws.get('act', act)
+    cond_kws['discrete'] = cond_kws.get('discrete', discrete)
+    cond_kws['layers'] = cond_kws.get('layers', 2)
+    cond_kws['size'] = cond_kws.get('size', 50) # 50 is default cond model stoch size
+
+    if subj_kws is None:
+      subj_kws = {}
+    else:
+      subj_kws = dict(**subj_kws)
+    subj_kws['stoch'] = subj_kws.get('stoch', stoch)
+    subj_kws['deter'] = subj_kws.get('deter', deter)
+    subj_kws['hidden'] = subj_kws.get('hidden', hidden)
+    subj_kws['discrete'] = subj_kws.get('discrete', discrete)
+    subj_kws['act'] = subj_kws.get('act', act)
+    subj_kws['std_act'] = subj_kws.get('std_act', std_act)
+    subj_kws['min_std'] = subj_kws.get('mid_std', min_std)
+
+    if obj_kws is not None:
+      obj_kws = {}
+    else:
+      obj_kws = dict(**obj_kws)    
+    obj_kws['stoch'] = obj_kws.get('stoch', stoch)
+    obj_kws['deter'] = obj_kws.get('deter', deter)
+    obj_kws['hidden'] = obj_kws.get('hidden', hidden)
+    obj_kws['discrete'] = obj_kws.get('discrete', discrete)
+    obj_kws['act'] = obj_kws.get('act', act)
+    obj_kws['std_act'] = obj_kws.get('std_act', std_act)
+    obj_kws['min_std'] = obj_kws.get('mid_std', min_std)
+
     self._stoch = stoch
     self._deter = deter
     self._hidden = hidden
@@ -510,18 +550,10 @@ class DualReasoner(RSSM):
     self.policy_feats = [] if policy_feats is None else policy_feats
     self.value_feats = [] if value_feats is None else value_feats
     self._cast = lambda x: tf.cast(x, prec.global_policy().compute_dtype)
-    self.obj_reasoner = ReasonerMLP(stoch=stoch, deter=deter, hidden=hidden, discrete=discrete, act=act, std_act=std_act, min_std=min_std)
+    self.obj_reasoner = ReasonerMLP(**obj_kws)
     # self.obj_reasoner = Reasoner2Rnn(stoch=stoch, deter=deter, hidden=hidden, discrete=discrete, act=act, std_act=std_act, min_std=min_std)
     # self.subj_reasoner = Reasoner(stoch=stoch, deter=deter, hidden=hidden, discrete=discrete, act=act, std_act=std_act, min_std=min_std)
-    self.subj_reasoner = RSSM(stoch=stoch, deter=deter, hidden=hidden, discrete=discrete, act=act, std_act=std_act, min_std=min_std)
-    if cond_kws is None:
-      cond_kws = {}
-    cond_kws = dict(cond_kws)
-    cond_kws['hidden'] = cond_kws.get('hidden', hidden)
-    cond_kws['act'] = cond_kws.get('act', act)
-    cond_kws['discrete'] = cond_kws.get('discrete', discrete)
-    cond_kws['layers'] = cond_kws.get('layers', 2)
-    cond_kws['size'] = cond_kws.get('size', cond_stoch)
+    self.subj_reasoner = RSSM(**subj_kws)
     self.condition_model = common.ConditionModel(**cond_kws)
 
   @tf.function
