@@ -302,7 +302,7 @@ class ReasonerMLP(RSSM):
   @tf.function
   def obs_step(self, prev_state, current_state, post_update, task_vec=None, sample=True):
     post_update = self._cast(post_update)
-    
+
     x = self.get('obs_out', tfkl.Dense, self._hidden, self._act)(post_update)
     stats = self._suff_stats_layer('obs_dist', x)
     dist = self.get_dist(stats)
@@ -534,7 +534,7 @@ class DualReasoner(RSSM):
     else:
       subj_curr_state = None
       obj_curr_state = None
-    obj_post = self.obj_reasoner.obs_step(prev_state=obj_state, 
+    obj_post = self.obj_reasoner.obs_step(prev_state=obj_state,
                                           current_state=obj_curr_state,
                                           post_update=obj_emb,
                                           sample=sample)
@@ -554,7 +554,7 @@ class DualReasoner(RSSM):
     mu, sigma = sample[kind]['mean'], sample[kind]['std']
     mu = tf.expand_dims(mu, 2)
     sigma = tf.expand_dims(sigma, 2)
-    if kind == 'obj': 
+    if kind == 'obj':
       expand_dist = self.obj_reasoner.get_dist({'mean': mu, 'std': sigma})
     elif kind == 'subj':
       expand_dist = self.subj_reasoner.get_dist({'mean': mu, 'std': sigma})
@@ -585,13 +585,14 @@ class DualReasoner(RSSM):
       task_vec = self._cast(task_vec)
       ustate = tf.concat([ustate, task_vec], -1)
     utility = self.condition_model.imagine(ustate, sample=sample)
-    if task_vec is not None:
-      ustoch = self._cast(utility['stoch'])
-      ctask_vec = self._cast(task_vec)
-      prior_update = tf.concat([ustoch, ctask_vec], -1)
-    else:
-      prior_update = self._cast(utility['stoch'])
-    obj_prior = self.obj_reasoner.img_step(prev_state=obj_state, 
+    #if task_vec is not None:
+    #  ustoch = self._cast(utility['stoch'])
+    #  ctask_vec = self._cast(task_vec)
+    #  prior_update = tf.concat([ustoch, ctask_vec], -1)
+    #else:
+    #  prior_update = self._cast(utility['stoch'])
+    prior_update = self._cast(utility['stoch'])
+    obj_prior = self.obj_reasoner.img_step(prev_state=obj_state,
                                            prior_update=prior_update,
                                            sample=sample)
     return {'subj': subj_prior, 'obj': obj_prior, 'utility': utility}
