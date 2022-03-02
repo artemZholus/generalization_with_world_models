@@ -538,7 +538,8 @@ class DualReasoner(RSSM):
                                           current_state=obj_curr_state,
                                           post_update=obj_emb,
                                           sample=sample)
-    utility = self.condition_model.observe(self.obj_reasoner.get_feat(obj_post), sample=sample)
+    util_cond = {k: tf.concat([self._cast(obj_post[k]), self._cast(obj_state[k])], 1) for k in obj_post.keys()}
+    utility = self.condition_model.observe(self.obj_reasoner.get_feat(util_cond), sample=sample)
     post_update = tf.concat([self._cast(utility['stoch']), subj_emb], -1)
     # post_update = subj_emb
     subj_post, _ = self.subj_reasoner.obs_step(
@@ -585,13 +586,13 @@ class DualReasoner(RSSM):
       task_vec = self._cast(task_vec)
       ustate = tf.concat([ustate, task_vec], -1)
     utility = self.condition_model.imagine(ustate, sample=sample)
-    #if task_vec is not None:
-    #  ustoch = self._cast(utility['stoch'])
-    #  ctask_vec = self._cast(task_vec)
-    #  prior_update = tf.concat([ustoch, ctask_vec], -1)
-    #else:
-    #  prior_update = self._cast(utility['stoch'])
-    prior_update = self._cast(utility['stoch'])
+    if task_vec is not None:
+     ustoch = self._cast(utility['stoch'])
+     ctask_vec = self._cast(task_vec)
+     prior_update = tf.concat([ustoch, ctask_vec], -1)
+    else:
+     prior_update = self._cast(utility['stoch'])
+    # prior_update = self._cast(utility['stoch'])
     obj_prior = self.obj_reasoner.img_step(prev_state=obj_state,
                                            prior_update=prior_update,
                                            sample=sample)
