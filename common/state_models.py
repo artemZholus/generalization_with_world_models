@@ -342,6 +342,95 @@ class ReasonerMLP(RSSM):
     else:
       return tf.concat([stoch, state['deter']], -1)
 
+
+class ReasonerFullMLP(RSSM):
+  def __init__(
+      self, stoch=200, deter=200, hidden=200, discrete=False, act=tf.nn.elu,
+      std_act='softplus', min_std=0.1
+    ):
+    super().__init__()
+    self._stoch = stoch
+    self._hidden = hidden
+    self._discrete = discrete
+    self._act = getattr(tf.nn, act) if isinstance(act, str) else act
+    self._std_act = std_act
+    self._min_std = min_std
+    self._cast = lambda x: tf.cast(x, prec.global_policy().compute_dtype)
+
+  def initial(self, batch_size):
+    dtype = prec.global_policy().compute_dtype
+    if self._discrete:
+      state = dict(
+          logit=tf.zeros([batch_size, self._stoch, self._discrete], dtype),
+          stoch=tf.zeros([batch_size, self._stoch, self._discrete], dtype),
+          out=tf.zeros([batch_size, self._hidden], dtype))
+    else:
+      state = dict(
+          mean=tf.zeros([batch_size, self._stoch], dtype),
+          std=tf.zeros([batch_size, self._stoch], dtype),
+          stoch=tf.zeros([batch_size, self._stoch], dtype),
+          out=tf.zeros([batch_size, self._hidden], dtype))
+    return state
+
+  @tf.function
+  def observe(self, post_upd, prior_upd, state=None, **kws):
+    swap = lambda x: tf.transpose(x, [1, 0] + list(range(2, len(x.shape))))
+    if state is None:
+      state = self.initial(tf.shape(prior_upd)[0])
+    post_upd, prior_upd = swap(post_upd), swap(prior_upd)
+    post, prior = common.static_scan(
+        lambda prev, inputs: self.obs_step(prev[0], *inputs),
+        (prior_upd, post_upd), (state, state))
+    post = {k: swap(v) for k, v in post.items()}
+    prior = {k: swap(v) for k, v in prior.items()}
+    return post, prior
+
+  @tf.function
+  def imagine(self, prior_upd, state=None):
+    swap = lambda x: tf.transpose(x, [1, 0] + list(range(2, len(x.shape))))
+    if state is None:
+      state = self.initial(tf.shape(prior_upd)[0])
+    assert isinstance(state, dict), state
+    prior_upd = swap(prior_upd)
+    prior = common.static_scan(self.img_step, prior_upd, state)
+    prior = {k: swap(v) for k, v in prior.items()}
+    return prior
+
+  @tf.function
+  def obs_step(self, prev_state, current_state, post_update, task_vec=None, sample=True):
+    post_update = self._cast(post_update)
+    x = self.get('obs_out', tfkl.Dense, self._hidden, self._act)(post_update)
+    stats = self._suff_stats_layer('obs_dist', x)
+    dist = self.get_dist(stats)
+    stoch = dist.sample() if sample else dist.mode()
+    latent = {'stoch': stoch, 'out': x, **stats}
+    return latent
+
+  @tf.function
+  def img_step(self, prev_state, prior_update, task_vec=None, sample=True):
+    prev_stoch = self._cast(prev_state['stoch'])
+    if task_vec is not None:
+      prior_update = self._cast(tf.concat([prior_update, task_vec], -1))
+    else:
+      prior_update = self._cast(prior_update)
+    if self._discrete:
+      shape = prev_stoch.shape[:-2] + [self._stoch * self._discrete]
+      prev_stoch = tf.reshape(prev_stoch, shape)
+    x = tf.concat([prev_stoch, prior_update], -1)
+    x = self.get('img_out', tfkl.Dense, self._hidden, self._act)(x)
+    stats = self._suff_stats_layer('img_dist', x)
+    dist = self.get_dist(stats)
+    stoch = dist.sample() if sample else dist.mode()
+    latent = {'stoch': stoch, 'out': x, **stats}
+    return latent
+
+  def get_feat(self, state):
+    stoch = self._cast(state['stoch'])
+    if self._discrete:
+      shape = stoch.shape[:-2] + [self._stoch * self._discrete]
+      stoch = tf.reshape(stoch, shape)
+    return stoch
+    
 class Reasoner2Rnn(RSSM):
   def __init__(
       self, stoch=30, deter=200, hidden=200, discrete=False, act=tf.nn.elu,
@@ -550,7 +639,7 @@ class DualReasoner(RSSM):
     self.policy_feats = [] if policy_feats is None else policy_feats
     self.value_feats = [] if value_feats is None else value_feats
     self._cast = lambda x: tf.cast(x, prec.global_policy().compute_dtype)
-    self.obj_reasoner = ReasonerMLP(**obj_kws)
+    self.obj_reasoner = ReasonerFullMLP(**obj_kws)
     # self.obj_reasoner = Reasoner2Rnn(stoch=stoch, deter=deter, hidden=hidden, discrete=discrete, act=act, std_act=std_act, min_std=min_std)
     # self.subj_reasoner = Reasoner(stoch=stoch, deter=deter, hidden=hidden, discrete=discrete, act=act, std_act=std_act, min_std=min_std)
     self.subj_reasoner = RSSM(**subj_kws)
@@ -617,12 +706,8 @@ class DualReasoner(RSSM):
       task_vec = self._cast(task_vec)
       ustate = tf.concat([ustate, task_vec], -1)
     utility = self.condition_model.imagine(ustate, sample=sample)
-    if task_vec is not None:
-      ustoch = self._cast(utility['stoch'])
-      ctask_vec = self._cast(task_vec)
-      prior_update = tf.concat([ustoch, ctask_vec], -1)
-    else:
-      prior_update = self._cast(utility['stoch'])
+    
+    prior_update = self._cast(utility['stoch'])
     obj_prior = self.obj_reasoner.img_step(prev_state=obj_state, 
                                            prior_update=prior_update,
                                            sample=sample)
