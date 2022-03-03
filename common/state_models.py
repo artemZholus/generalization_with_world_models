@@ -342,6 +342,115 @@ class ReasonerMLP(RSSM):
     else:
       return tf.concat([stoch, state['deter']], -1)
 
+
+class ReasonerStochMLP(RSSM):
+  def __init__(
+      self, stoch=30, deter=200, hidden=200, discrete=False, act=tf.nn.elu,
+      std_act='softplus', min_std=0.1
+    ):
+    super().__init__()
+    self._stoch = stoch
+    self._deter = deter
+    self._hidden = hidden
+    self._discrete = discrete
+    self._act = getattr(tf.nn, act) if isinstance(act, str) else act
+    self._std_act = std_act
+    self._min_std = min_std
+    self._cell = common.GRUCell(self._hidden, norm=True)
+    self._cast = lambda x: tf.cast(x, prec.global_policy().compute_dtype)
+
+  def initial(self, batch_size):
+    dtype = prec.global_policy().compute_dtype
+    if self._discrete:
+      state = dict(
+          logit=tf.zeros([batch_size, self._deter, self._discrete], dtype),
+          deter=self._cell.get_initial_state(None, batch_size, dtype),
+          out=tf.zeros([batch_size, self._hidden], dtype))
+    else:
+      state = dict(
+          mean=tf.zeros([batch_size, self._deter], dtype),
+          std=tf.zeros([batch_size, self._deter], dtype),
+          deter=self._cell.get_initial_state(None, batch_size, dtype),
+          out=tf.zeros([batch_size, self._hidden], dtype))
+    return state
+
+  @tf.function
+  def observe(self, post_upd, prior_upd, state=None, **kws):
+    swap = lambda x: tf.transpose(x, [1, 0] + list(range(2, len(x.shape))))
+    if state is None:
+      state = self.initial(tf.shape(prior_upd)[0])
+    post_upd, prior_upd = swap(post_upd), swap(prior_upd)
+    post, prior = common.static_scan(
+        lambda prev, inputs: self.obs_step(prev[0], *inputs),
+        (prior_upd, post_upd), (state, state))
+    post = {k: swap(v) for k, v in post.items()}
+    prior = {k: swap(v) for k, v in prior.items()}
+    return post, prior
+
+  @tf.function
+  def imagine(self, prior_upd, state=None):
+    swap = lambda x: tf.transpose(x, [1, 0] + list(range(2, len(x.shape))))
+    if state is None:
+      state = self.initial(tf.shape(prior_upd)[0])
+    assert isinstance(state, dict), state
+    prior_upd = swap(prior_upd)
+    prior = common.static_scan(self.img_step, prior_upd, state)
+    prior = {k: swap(v) for k, v in prior.items()}
+    return prior
+
+  @tf.function
+  def obs_step(self, prev_state, current_state, post_update, task_vec=None, sample=True):
+    post_update = self._cast(post_update)
+    
+    x = self.get('obs_out', tfkl.Dense, self._hidden, self._act)(post_update)
+    stats = self._suff_stats_layer('obs_dist', x)
+    dist = self.get_dist(stats)
+    deter = dist.sample() if sample else dist.mode()
+    latent = {'deter': deter, 'out': x, **stats}
+    return latent
+
+  @tf.function
+  def img_step(self, prev_state, prior_update, task_vec=None, sample=True):
+    prior_update = self._cast(prior_update)
+    if self._discrete:
+      # TODO: implement discrete option
+      # shape = prev_stoch.shape[:-2] + [self._stoch * self._discrete]
+      # prev_stoch = tf.reshape(prev_stoch, shape)
+      raise NotImplementedError
+    x = prior_update
+    deter = self._cast(prev_state['deter'])
+    x, deter = self._cell(x, [deter])
+    deter = deter[0]  # Keras wraps the state in a list.
+    stats = self._suff_stats_layer('img_dist', deter)
+    dist = self.get_dist(stats)
+    deter = dist.sample() if sample else dist.mode()
+    latent = {'deter': deter, 'out': x, **stats}
+    return latent
+
+  def get_feat(self, state):
+    deter = self._cast(state['deter'])
+    if self._discrete:
+      shape = deter.shape[:-2] + [self._hidden * self._discrete]
+      deter = tf.reshape(deter, shape)
+    return deter
+
+  def _suff_stats_layer(self, name, x):
+    if self._discrete:
+      x = self.get(name, tfkl.Dense, self._hidden * self._discrete, None)(x)
+      logit = tf.reshape(x, x.shape[:-1] + [self._hidden, self._discrete])
+      return {'logit': logit}
+    else:
+      x = self.get(name, tfkl.Dense, 2 * self._hidden, None)(x)
+      mean, std = tf.split(x, 2, -1)
+      std = {
+          'softplus': lambda: tf.nn.softplus(std),
+          'sigmoid': lambda: tf.nn.sigmoid(std),
+          'sigmoid2': lambda: 2 * tf.nn.sigmoid(std / 2),
+      }[self._std_act]()
+      std = std + self._min_std
+      return {'mean': mean, 'std': std}
+
+
 class Reasoner2Rnn(RSSM):
   def __init__(
       self, stoch=30, deter=200, hidden=200, discrete=False, act=tf.nn.elu,
@@ -550,7 +659,7 @@ class DualReasoner(RSSM):
     self.policy_feats = [] if policy_feats is None else policy_feats
     self.value_feats = [] if value_feats is None else value_feats
     self._cast = lambda x: tf.cast(x, prec.global_policy().compute_dtype)
-    self.obj_reasoner = ReasonerMLP(**obj_kws)
+    self.obj_reasoner = ReasonerStochMLP(**obj_kws)
     # self.obj_reasoner = Reasoner2Rnn(stoch=stoch, deter=deter, hidden=hidden, discrete=discrete, act=act, std_act=std_act, min_std=min_std)
     # self.subj_reasoner = Reasoner(stoch=stoch, deter=deter, hidden=hidden, discrete=discrete, act=act, std_act=std_act, min_std=min_std)
     self.subj_reasoner = RSSM(**subj_kws)
