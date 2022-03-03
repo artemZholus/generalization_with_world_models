@@ -89,10 +89,10 @@ class WorldModel(common.Module):
   def mut_inf(self, post, prior):
     metrics = {
       'mi_q_subj': self.rssm.mut_inf(post, kind='subj'),
-      'mi_q_util': self.rssm.mut_inf(post, kind='utility'),
+      # 'mi_q_util': self.rssm.mut_inf(post, kind='utility'),
       'mi_q_obj': self.rssm.mut_inf(post, kind='obj'),
       'mi_p_subj': self.rssm.mut_inf(prior, kind='subj'),
-      'mi_p_util': self.rssm.mut_inf(prior, kind='utility'),
+      # 'mi_p_util': self.rssm.mut_inf(prior, kind='utility'),
       'mi_p_obj': self.rssm.mut_inf(prior, kind='obj'),
     }
     return metrics
@@ -424,8 +424,8 @@ class CausalWorldModel(WorldModel):
     metrics['post_subj_ent'] = post_dist['subj'].entropy().mean()
     metrics['prior_obj_ent'] = prior_dist['obj'].entropy().mean()
     metrics['post_obj_ent'] = post_dist['obj'].entropy().mean()
-    metrics['post_util_ent'] = post_dist['utility'].entropy().mean()
-    metrics['prior_util_ent'] = prior_dist['utility'].entropy().mean()
+    # metrics['post_util_ent'] = post_dist['utility'].entropy().mean()
+    # metrics['prior_util_ent'] = prior_dist['utility'].entropy().mean()
     return model_loss, post, outs, metrics
 
   @tf.function

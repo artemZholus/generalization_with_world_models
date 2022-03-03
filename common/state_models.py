@@ -554,7 +554,7 @@ class DualReasoner(RSSM):
     # self.obj_reasoner = Reasoner2Rnn(stoch=stoch, deter=deter, hidden=hidden, discrete=discrete, act=act, std_act=std_act, min_std=min_std)
     # self.subj_reasoner = Reasoner(stoch=stoch, deter=deter, hidden=hidden, discrete=discrete, act=act, std_act=std_act, min_std=min_std)
     self.subj_reasoner = RSSM(**subj_kws)
-    self.condition_model = common.ConditionModel(**cond_kws)
+    self.condition_model = common.DeterConditionModel(**cond_kws)
 
   @tf.function
   def top_down_step(self, state, obj_emb=None, subj_emb=None, action=None, current_step=None, task_vec=None, sample=True):
@@ -571,7 +571,7 @@ class DualReasoner(RSSM):
                                           post_update=obj_emb,
                                           sample=sample)
     utility = self.condition_model.observe(self.obj_reasoner.get_feat(obj_post), sample=sample)
-    post_update = tf.concat([self._cast(utility['stoch']), subj_emb], -1)
+    post_update = tf.concat([self._cast(utility['deter']), subj_emb], -1)
     # post_update = subj_emb
     subj_post, _ = self.subj_reasoner.obs_step(
       prev_state=subj_state, embed=post_update, prev_action=action, sample=sample
@@ -590,8 +590,6 @@ class DualReasoner(RSSM):
       expand_dist = self.obj_reasoner.get_dist({'mean': mu, 'std': sigma})
     elif kind == 'subj':
       expand_dist = self.subj_reasoner.get_dist({'mean': mu, 'std': sigma})
-    elif kind == 'utility':
-      expand_dist = self.condition_model.get_dist({'mean': mu, 'std': sigma})
     stoch = tf.expand_dims(stoch, 2)
     prob = expand_dist.log_prob(stoch)
     marginal_prob = prob.logsumexp(2) - math.log(prob.shape[2])
@@ -617,12 +615,7 @@ class DualReasoner(RSSM):
       task_vec = self._cast(task_vec)
       ustate = tf.concat([ustate, task_vec], -1)
     utility = self.condition_model.imagine(ustate, sample=sample)
-    if task_vec is not None:
-      ustoch = self._cast(utility['stoch'])
-      ctask_vec = self._cast(task_vec)
-      prior_update = tf.concat([ustoch, ctask_vec], -1)
-    else:
-      prior_update = self._cast(utility['stoch'])
+    prior_update = self._cast(utility['deter'])
     obj_prior = self.obj_reasoner.img_step(prev_state=obj_state, 
                                            prior_update=prior_update,
                                            sample=sample)
@@ -647,7 +640,7 @@ class DualReasoner(RSSM):
         elif feat == 'obj':
           feat_vec = self.obj_reasoner.get_feat(state['obj'])
         elif feat == 'utility':
-          feat_vec = self._cast(state['utility']['stoch'])
+          feat_vec = self._cast(state['utility']['deter'])
         elif feat == 'task':
           feat_vec = self._cast(task_vec)
         features.append(feat_vec)
@@ -660,7 +653,7 @@ class DualReasoner(RSSM):
         elif feat == 'obj':
           feat_vec = self.obj_reasoner.get_feat(state['obj'])
         elif feat == 'utility':
-          feat_vec = self._cast(state['utility']['stoch'])
+          feat_vec = self._cast(state['utility']['deter'])
         elif feat == 'task':
           feat_vec = self._cast(task_vec)
         features.append(feat_vec)
@@ -674,8 +667,7 @@ class DualReasoner(RSSM):
   def get_dist(self, state):
     subj_dist = self.subj_reasoner.get_dist(state['subj'])
     obj_dist = self.obj_reasoner.get_dist(state['obj'])
-    util = self.condition_model.get_dist(state['utility'])
-    return {'subj': subj_dist, 'obj': obj_dist, 'utility': util}
+    return {'subj': subj_dist, 'obj': obj_dist}
 
   @tf.function
   def obs_step(self, state, action, emb, task_vec=None, sample=True):

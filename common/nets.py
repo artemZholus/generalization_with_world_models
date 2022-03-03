@@ -99,6 +99,42 @@ class ConditionModel(PostPriorNet):
       return {'mean': mean, 'std': std}
 
 
+class DeterConditionModel(PostPriorNet):
+  def __init__(self, size=50, hidden=200, layers=2, act=tf.nn.elu, discrete=False):
+    super().__init__()
+    self._size = size
+    self._deter = size
+    self.forward_cond = MLP(shape=[size], units=hidden, layers=layers-1, dist_layer=False, act=act)
+    self.backward_cond = MLP(shape=[size], units=hidden, layers=layers-1, dist_layer=False, act=act)
+    self._discrete = discrete
+    self._cast = lambda x: tf.cast(x, prec.global_policy().compute_dtype)
+
+  def imagine(self, state, sample=True):
+    emb = self.forward_cond(state)
+    return {'deter': emb}
+  
+  def observe(self, state, sample=True):
+    emb = self.backward_cond(state)
+    return {'deter': emb}
+
+  def get_feat(self, state):
+    return self._cast(state['deter'])
+
+  def initial(self, batch_size):
+    dtype = prec.global_policy().compute_dtype
+    state = dict(
+      deter=tf.zeros([batch_size, self._deter], dtype))
+    return state
+
+  def kl_loss(self, post, prior, forward, balance, free, free_avg):
+    deter_kl = ((
+      self.get_feat(post) -
+      self.get_feat(prior)
+    ) ** 2).sum(-1).mean()
+    deter_kl = tf.cast(deter_kl, tf.float32)
+    return deter_kl, deter_kl
+
+
 class ConvEncoder(common.Module):
 
   def __init__(
