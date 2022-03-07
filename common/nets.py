@@ -180,8 +180,8 @@ class DeterConditionModel(DeterPostPriorNet):
       deter=tf.zeros([batch_size, self._deter], dtype))
     return state
 
-  def loss(self, post, prior):
-    mse_loss, mse_value = self.mse_loss(post, prior)
+  def loss(self, post, prior, **kwargs):
+    mse_loss, mse_value = self.mse_loss(post, prior, **kwargs)
     return {'mse': mse_loss}, {'mse': mse_value}
 
 
