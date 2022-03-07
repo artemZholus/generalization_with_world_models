@@ -8,7 +8,7 @@ from tensorflow.keras.mixed_precision import experimental as prec
 import common
 
 
-class RSSM(common.StochPostPriorNet):
+class RSSM(common.StochPostPriorNet, common.DeterPostPriorNet):
 
   def __init__(
       self, stoch=30, deter=200, hidden=200, discrete=False, act=tf.nn.elu,
@@ -63,12 +63,19 @@ class RSSM(common.StochPostPriorNet):
     prior = {k: swap(v) for k, v in prior.items()}
     return prior
 
+  def get_stoch(self, state):
+    return self._cast(state['stoch'])
+
+  def get_deter(self, state):
+    return state['deter']
+
   def get_feat(self, state, key=None):
-    stoch = self._cast(state['stoch'])
+    stoch = self.get_stoch(state)
     if self._discrete:
       shape = stoch.shape[:-2] + [self._stoch * self._discrete]
       stoch = tf.reshape(stoch, shape)
-    return tf.concat([stoch, state['deter']], -1)
+    deter = self.get_deter(state)
+    return tf.concat([stoch, deter], -1)
 
   def get_dist(self, state):
     if self._discrete:
@@ -127,6 +134,10 @@ class RSSM(common.StochPostPriorNet):
       }[self._std_act]()
       std = std + self._min_std
       return {'mean': mean, 'std': std}
+
+  def loss(self, post, prior, **kwargs):
+    kl_loss, kl_value = self.kl_loss(post, prior, **kwargs)
+    return {'kl': kl_loss}, {'kl': kl_value}
 
 
 class Reasoner(RSSM):
@@ -550,7 +561,7 @@ class DualReasoner(RSSM):
     self.feature_sets = [] if feature_sets is None else feature_sets
     self._cast = lambda x: tf.cast(x, prec.global_policy().compute_dtype)
     self.subj_reasoner = RSSM(**subj_kws)
-    self.condition_model = common.ConditionModel(**cond_kws)
+    self.condition_model = common.StochConditionModel(**cond_kws)
     self.obj_reasoner = ReasonerMLP(**obj_kws)
 
   @tf.function
@@ -658,8 +669,10 @@ class DualReasoner(RSSM):
   def get_dist(self, state):
     subj_dist = self.subj_reasoner.get_dist(state['subj'])
     obj_dist = self.obj_reasoner.get_dist(state['obj'])
-    util = self.condition_model.get_dist(state['util'])
-    return {'subj': subj_dist, 'obj': obj_dist, 'util': util}
+    util_dist = self.condition_model.get_dist(state['util'])
+    return {'subj': subj_dist, 'obj': obj_dist, 
+            'util': util_dist
+            }
 
   @tf.function
   def obs_step(self, state, action, emb, task_vec=None, sample=True):
@@ -715,34 +728,24 @@ class DualReasoner(RSSM):
     prior = tf.nest.map_structure(swap, prior)
     return prior
 
-  def kl_loss(self, post, prior, **kwargs):
-    # subj KL
-    subj_loss, subj_value = self.subj_reasoner.kl_loss(post['subj'], prior['subj'], **kwargs.get('subj', {}))
-    # obj KL
-    obj_loss, obj_value = self.obj_reasoner.kl_loss(post['obj'], prior['obj'], **kwargs.get('obj', {}))
-    # util KL
-    util_loss, util_value = self.condition_model.kl_loss(post['util'], prior['util'], **kwargs.get('util', {}))
+  def loss(self, post, prior, **kwargs):
+    # subj loss
+    subj_loss, subj_value = self.subj_reasoner.loss(post['subj'], prior['subj'], **kwargs.get('subj', {}))
+    subj_loss = {f'subj_{name}': loss for name, loss in subj_loss.items()}
+    subj_value = {f'subj_{name}': loss for name, loss in subj_value.items()}
+    # obj loss
+    obj_loss, obj_value = self.obj_reasoner.loss(post['obj'], prior['obj'], **kwargs.get('obj', {}))
+    obj_loss = {f'obj_{name}': loss for name, loss in obj_loss.items()}
+    obj_value = {f'obj_{name}': loss for name, loss in obj_value.items()}
+    # util loss
+    util_loss, util_value = self.condition_model.loss(post['util'], prior['util'], **kwargs.get('util', {}))
+    util_loss = {f'util_{name}': loss for name, loss in util_loss.items()}
+    util_value = {f'util_{name}': loss for name, loss in util_value.items()}
     # losses and values
-    loss = {'subj': subj_loss, 'obj': obj_loss, 'util': util_loss}
-    value = {'subj': subj_value, 'obj': obj_value, 'util': util_value}
-    return loss, value
-
-  def deter_kl_loss(self, post, prior, **kwargs):
-    # subj KL
-    subj_loss, subj_value = self.subj_reasoner.kl_loss(post['subj'], prior['subj'], **kwargs.get('subj', {}))
-    # obj KL
-    obj_loss, obj_value = self.obj_reasoner.kl_loss(post['obj'], prior['obj'], **kwargs.get('obj', {}))
-    # obj deter KL
-    deter_kl = ((
-      post['obj']['curr_state_post']['deter'] -
-      prior['obj']['curr_state_prio']['deter']
-    ) ** 2).sum(-1).mean()
-    deter_kl = tf.cast(deter_kl, tf.float32)
-    # util KL
-    util_loss, util_value = self.condition_model.kl_loss(post['util'], prior['util'], **kwargs.get('util', {}))
-    # losses and values
-    loss = {'subj': subj_loss, 'obj': obj_loss, 'obj_deter': deter_kl, 'util': util_loss}
-    value = {'subj': subj_value, 'obj': obj_value, 'obj_deter': deter_kl, 'util': util_value}
+    loss = {}
+    loss.update(**subj_loss, **obj_loss, **util_loss)
+    value = {}
+    value.update(**subj_value, **obj_value, **util_value)
     return loss, value
 
 
