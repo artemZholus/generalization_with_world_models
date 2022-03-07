@@ -106,7 +106,7 @@ class WorldModel(common.Module):
     def step(prev, _):
       state, _, _, _, _ = prev
       pfeat = self.rssm.get_feat(state, key='policy', task_vec=task_vec)
-      vfeat = 0 * self.rssm.get_feat(state, key='value', task_vec=task_vec)
+      vfeat = self.rssm.get_feat(state, key='value', task_vec=task_vec)
       rfeat = self.rssm.get_feat(state, key='reward', task_vec=task_vec)
       action = policy(tf.stop_gradient(pfeat)).sample()
       succ = self.rssm.img_step(state, action, task_vec=task_vec)
