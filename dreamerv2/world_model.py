@@ -61,14 +61,10 @@ class WorldModel(common.Module):
     data = self.preprocess(data)
     embed = self.encoder(data)
     post, prior = self.rssm.observe(embed, data['action'], state, task_vector=data.get('task_vector', None))
-    kl_loss, kl_value = self.rssm.kl_loss(post, prior, data=data, **self.config.kl)
+    rssm_loss, rssm_value = self.rssm.loss(post, prior, data=data, **self.config.kl)
     # stoch deter (mean std)/(logit)
     likes = {}
-    if isinstance(kl_loss, dict):
-      losses = {f'{layer}_kl': loss for layer, loss in kl_loss.items()}
-    else:
-      assert len(kl_loss.shape) == 0
-      losses = {'kl': kl_loss}
+    losses = rssm_loss
     for name, head in self.heads.items():
       feat = self.rssm.get_feat(post, key=name, task_vec=data.get('task_vector', None))
       grad_head = (name in self.config.grad_heads)
@@ -82,7 +78,7 @@ class WorldModel(common.Module):
       self.config.loss_scales.get(k, 1.0) * v for k, v in losses.items())
     outs = dict(
         embed=embed, feat=feat, post=post,
-        prior=prior, likes=likes, kl=kl_value)
+        prior=prior, likes=likes, rssm=rssm_value)
     metrics = {f'{name}_loss': value for name, value in losses.items()}
     metrics.update(self.mut_inf(post, prior))
     return model_loss, post, outs, metrics
@@ -415,9 +411,8 @@ class CausalWorldModel(WorldModel):
 
   def loss(self, data, state):
     model_loss, post, outs, metrics = super().loss(data, state)
-    metrics['model_subj_kl'] = outs['kl']['subj'].mean()
-    metrics['model_obj_kl'] = outs['kl']['obj'].mean()
-    metrics['model_util_kl'] = outs['kl']['util'].mean()
+    for loss_name, loss_value in outs['rssm'].items():
+      metrics[f'model_{loss_name}'] = loss_value.mean()
     prior_dist = self.rssm.get_dist(outs['prior'])
     post_dist = self.rssm.get_dist(outs['post'])
     metrics['prior_subj_ent'] = prior_dist['subj'].entropy().mean()
