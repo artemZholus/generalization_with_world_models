@@ -561,7 +561,7 @@ class DualReasoner(RSSM):
     self.feature_sets = [] if feature_sets is None else feature_sets
     self._cast = lambda x: tf.cast(x, prec.global_policy().compute_dtype)
     self.subj_reasoner = RSSM(**subj_kws)
-    self.condition_model = common.StochConditionModel(**cond_kws)
+    self.condition_model = common.DeterConditionModel(**cond_kws)
     self.obj_reasoner = ReasonerMLP(**obj_kws)
 
   @tf.function
@@ -603,8 +603,8 @@ class DualReasoner(RSSM):
       expand_dist = self.obj_reasoner.get_dist({'mean': mu, 'std': sigma})
     elif kind == 'subj':
       expand_dist = self.subj_reasoner.get_dist({'mean': mu, 'std': sigma})
-    elif kind == 'util':
-      expand_dist = self.condition_model.get_dist({'mean': mu, 'std': sigma})
+    # elif kind == 'util':
+    #   expand_dist = self.condition_model.get_dist({'mean': mu, 'std': sigma})
     stoch = tf.expand_dims(stoch, 2)
     prob = expand_dist.log_prob(stoch)
     marginal_prob = prob.logsumexp(2) - math.log(prob.shape[2])
@@ -669,9 +669,9 @@ class DualReasoner(RSSM):
   def get_dist(self, state):
     subj_dist = self.subj_reasoner.get_dist(state['subj'])
     obj_dist = self.obj_reasoner.get_dist(state['obj'])
-    util_dist = self.condition_model.get_dist(state['util'])
+    # util_dist = self.condition_model.get_dist(state['util'])
     return {'subj': subj_dist, 'obj': obj_dist, 
-            'util': util_dist
+            # 'util': util_dist
             }
 
   @tf.function
