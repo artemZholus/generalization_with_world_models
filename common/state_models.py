@@ -566,11 +566,11 @@ class DualReasoner(RSSM):
 
   @tf.function
   def top_down_step(self, prev_state, emb_obj=None, emb_subj=None, action=None, task_vec=None, current_state=None, sample=True):
-    prev_subj, prev_obj = prev_state['subj'], prev_state['obj']
+    prev_subj, prev_obj, prev_util = prev_state['subj'], prev_state['obj'], prev_state['util']
     if current_state is not None:
-      current_subj, current_obj = current_state['subj'], current_state['obj']
+      current_subj, current_obj, current_util = current_state['subj'], current_state['obj'], current_state['util']
     else:
-      current_subj, current_obj = None, None
+      current_subj, current_obj, current_util = None, None, None
     # obj inference
     post_update_obj = emb_obj
     post_obj = self.obj_reasoner.obs_step(prev_state=prev_obj,
@@ -579,7 +579,7 @@ class DualReasoner(RSSM):
                                           sample=sample)
     # util inference
     post_update_util = self.obj_reasoner.get_feat(post_obj)
-    post_util = self.condition_model.obs_step(state=None,
+    post_util = self.condition_model.obs_step(prev_state=prev_util,
                                               post_update=post_update_util,
                                               sample=sample)
     # subj inference
@@ -613,11 +613,11 @@ class DualReasoner(RSSM):
 
   @tf.function
   def bottom_up_step(self, prev_state, action, task_vec=None, current_state=None, sample=True):
-    prev_subj, prev_obj = prev_state['subj'], prev_state['obj']
+    prev_subj, prev_obj, prev_util = prev_state['subj'], prev_state['obj'], prev_state['util']
     if current_state is not None:
-      current_subj, current_obj = current_state['subj'], current_state['obj']
+      current_subj, current_obj, current_util = current_state['subj'], current_state['obj'], current_state['util']
     else:
-      current_subj, current_obj = None, None
+      current_subj, current_obj, current_util = None, None, None
     # subj imagination
     prior_subj = self.subj_reasoner.img_step(prev_state=prev_subj,
                                              prev_action=action,
@@ -629,7 +629,7 @@ class DualReasoner(RSSM):
     if task_vec is not None:
       task_vec = self._cast(task_vec)
       prior_update_util = tf.concat([prior_subj_feat, task_vec], -1)
-    prior_util = self.condition_model.img_step(state=None,
+    prior_util = self.condition_model.img_step(prev_state=prev_util,
                                                prior_update=prior_update_util, 
                                                sample=sample)
     # obj imagination
