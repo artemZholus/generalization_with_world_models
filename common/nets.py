@@ -185,6 +185,77 @@ class DeterConditionModel(DeterPostPriorNet):
     return {'mse': mse_loss}, {'mse': mse_value}
 
 
+class RNNConditionModel(DeterPostPriorNet):
+  def __init__(self, size=32, hidden=200, layers=2, act=tf.nn.elu, discrete=False):
+    super().__init__()
+    self._size = size
+    self._stoch = size
+    self.forward_cond = MLP(shape=[size], units=hidden, layers=layers-1, dist_layer=False, act=act)
+    self.backward_cond = MLP(shape=[size], units=hidden, layers=layers-1, dist_layer=False, act=act)
+    self._discrete = discrete
+    self._cast = lambda x: tf.cast(x, prec.global_policy().compute_dtype)
+
+  def img_step(self, state, sample=True):
+    emb = self.forward_cond(state)
+    stats = self._suff_stats_layer('img', emb)
+    dist = self.get_dist(stats)
+    condition = dist.sample() if sample else dist.mode()
+    return {'stoch': condition, **stats}
+  
+  def obs_step(self, state, sample=True):
+    emb = self.backward_cond(state)
+    stats = self._suff_stats_layer('obs', emb)
+    dist = self.get_dist(stats)
+    condition = dist.sample() if sample else dist.mode()
+    return {'stoch': condition, **stats}
+
+  def initial(self, batch_size):
+    dtype = prec.global_policy().compute_dtype
+    if self._discrete:
+      state = dict(
+        logit=tf.zeros([batch_size, self._size, self._discrete], dtype),
+        stoch=tf.zeros([batch_size, self._stoch, self._discrete], dtype))
+    else:
+      state = dict(
+        mean=tf.zeros([batch_size, self._size], dtype),
+        std=tf.zeros([batch_size, self._size], dtype),
+        stoch=tf.zeros([batch_size, self._size], dtype))
+    return state
+
+  def get_stoch(self, state):
+    return self._cast(state['stoch'])
+
+  def get_feat(self, state):
+    return self.get_stoch(state)
+
+  def get_dist(self, state):
+    if self._discrete:
+      logit = state['logit']
+      logit = tf.cast(logit, tf.float32)
+      dist = tfd.Independent(common.OneHotDist(logit), 1)
+    else:
+      mean, std = state['mean'], state['std']
+      mean = tf.cast(mean, tf.float32)
+      std = tf.cast(std, tf.float32)
+      dist = tfd.MultivariateNormalDiag(mean, std)
+    return dist
+  
+  def _suff_stats_layer(self, name, x):
+    if self._discrete:
+      x = self.get(name, tfkl.Dense, self._size * self._discrete, None)(x)
+      logit = tf.reshape(x, x.shape[:-1] + [self._size, self._discrete])
+      return {'logit': logit}
+    else:
+      x = self.get(name, tfkl.Dense, 2 * self._size, None)(x)
+      mean, std = tf.split(x, 2, -1)
+      std = 2 * tf.nn.sigmoid(std / 2)
+      return {'mean': mean, 'std': std}
+
+  def loss(self, post, prior, **kwargs):
+    kl_loss, kl_value = self.kl_loss(post, prior, **kwargs)
+    return {'kl': kl_loss}, {'kl': kl_value}
+
+
 class ConvEncoder(common.Module):
 
   def __init__(
