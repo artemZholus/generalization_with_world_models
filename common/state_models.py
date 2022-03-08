@@ -561,7 +561,7 @@ class DualReasoner(RSSM):
     self.feature_sets = [] if feature_sets is None else feature_sets
     self._cast = lambda x: tf.cast(x, prec.global_policy().compute_dtype)
     self.subj_reasoner = RSSM(**subj_kws)
-    self.condition_model = common.StochConditionModel(**cond_kws)
+    self.condition_model = common.MLPRNNConditionModel(**cond_kws)
     self.obj_reasoner = ReasonerMLP(**obj_kws)
 
   @tf.function
