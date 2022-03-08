@@ -89,16 +89,16 @@ class StochConditionModel(StochPostPriorNet):
     self._discrete = discrete
     self._cast = lambda x: tf.cast(x, prec.global_policy().compute_dtype)
 
-  def img_step(self, state, sample=True):
-    emb = self.forward_cond(state)
-    stats = self._suff_stats_layer('img', emb)
+  def img_step(self, state, prior_update, sample=True):
+    x = self.forward_cond(prior_update)
+    stats = self._suff_stats_layer('img', x)
     dist = self.get_dist(stats)
     condition = dist.sample() if sample else dist.mode()
     return {'stoch': condition, **stats}
   
-  def obs_step(self, state, sample=True):
-    emb = self.backward_cond(state)
-    stats = self._suff_stats_layer('obs', emb)
+  def obs_step(self, state, post_update, sample=True):
+    x = self.backward_cond(post_update)
+    stats = self._suff_stats_layer('obs', x)
     dist = self.get_dist(stats)
     condition = dist.sample() if sample else dist.mode()
     return {'stoch': condition, **stats}
@@ -160,13 +160,13 @@ class DeterConditionModel(DeterPostPriorNet):
     self._discrete = discrete
     self._cast = lambda x: tf.cast(x, prec.global_policy().compute_dtype)
 
-  def img_step(self, state, sample=True):
-    emb = self.forward_cond(state)
-    return {'deter': emb}
+  def img_step(self, state, prior_update, sample=True):
+    condition = self.forward_cond(prior_update)
+    return {'deter': condition}
   
-  def obs_step(self, state, sample=True):
-    emb = self.backward_cond(state)
-    return {'deter': emb}
+  def obs_step(self, state, post_update, sample=True):
+    condition = self.backward_cond(post_update)
+    return {'deter': condition}
 
   def get_deter(self, state):
     return self._cast(state['deter'])
@@ -185,7 +185,7 @@ class DeterConditionModel(DeterPostPriorNet):
     return {'mse': mse_loss}, {'mse': mse_value}
 
 
-class RNNConditionModel(DeterPostPriorNet):
+class MLPRNNConditionModel(DeterPostPriorNet):
   def __init__(self, size=32, hidden=200, layers=2, act=tf.nn.elu, discrete=False):
     super().__init__()
     self._size = size
@@ -195,16 +195,20 @@ class RNNConditionModel(DeterPostPriorNet):
     self._discrete = discrete
     self._cast = lambda x: tf.cast(x, prec.global_policy().compute_dtype)
 
-  def img_step(self, state, sample=True):
-    emb = self.forward_cond(state)
-    stats = self._suff_stats_layer('img', emb)
+  def img_step(self, state, prior_update, sample=True):
+    prev_feat = self.get_feat(state)
+    x = tf.concat([prev_feat, self._cast(prior_update)])
+    x = self.forward_cond(x)
+    stats = self._suff_stats_layer('img', x)
     dist = self.get_dist(stats)
     condition = dist.sample() if sample else dist.mode()
     return {'stoch': condition, **stats}
   
-  def obs_step(self, state, sample=True):
-    emb = self.backward_cond(state)
-    stats = self._suff_stats_layer('obs', emb)
+  def obs_step(self, state, post_update, sample=True):
+    prev_feat = self.get_feat(state)
+    x = tf.concat([prev_feat, self._cast(post_update)])
+    x = self.backward_cond(x)
+    stats = self._suff_stats_layer('obs', x)
     dist = self.get_dist(stats)
     condition = dist.sample() if sample else dist.mode()
     return {'stoch': condition, **stats}

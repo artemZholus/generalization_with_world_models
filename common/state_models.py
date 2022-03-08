@@ -577,19 +577,18 @@ class DualReasoner(RSSM):
                                           current_state=current_obj,
                                           post_update=post_update_obj,
                                           sample=sample)
-    # subj inference
-    post_update_subj = emb_subj
-    post_subj, _ = self.subj_reasoner.obs_step(prev_state=prev_subj,
-                                               embed=post_update_subj,
-                                               prev_action=action,
-                                               sample=sample
-    )
     # util inference
-    post_update_util = tf.concat(
-      [self.obj_reasoner.get_feat(post_obj), 
-       self.subj_reasoner.get_feat(post_subj)], -1)
-    post_util = self.condition_model.obs_step(post_update_util, sample=sample)
-    
+    post_update_util = self.obj_reasoner.get_feat(post_obj)
+    post_util = self.condition_model.obs_step(state=None,
+                                              post_update=post_update_util,
+                                              sample=sample)
+    # subj inference
+    post_util_feat = self.condition_model.get_feat(post_util)
+    post_update_subj = tf.concat([post_util_feat, emb_subj], -1)
+    post_subj, _ = self.subj_reasoner.obs_step(prev_state=prev_subj, 
+                                               embed=post_update_subj, 
+                                               prev_action=action, 
+                                               sample=sample)
     return {'subj': post_subj, 'obj': post_obj, 'util': post_util}
 
   def mut_inf(self, sample, kind='obj'):
@@ -630,7 +629,9 @@ class DualReasoner(RSSM):
     if task_vec is not None:
       task_vec = self._cast(task_vec)
       prior_update_util = tf.concat([prior_subj_feat, task_vec], -1)
-    prior_util = self.condition_model.img_step(prior_update_util, sample=sample)
+    prior_util = self.condition_model.img_step(state=None,
+                                               prior_update=prior_update_util, 
+                                               sample=sample)
     prior_update_obj = self.condition_model.get_feat(prior_util)
     prior_obj = self.obj_reasoner.img_step(prev_state=prev_obj,
                                            prior_update=prior_update_obj,
