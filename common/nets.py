@@ -185,7 +185,7 @@ class DeterConditionModel(DeterPostPriorNet):
     return {'mse': mse_loss}, {'mse': mse_value}
 
 
-class MLPRNNConditionModel(DeterPostPriorNet):
+class MLPRNNConditionModel(StochPostPriorNet):
   def __init__(self, size=32, hidden=200, layers=2, act=tf.nn.elu, discrete=False):
     super().__init__()
     self._size = size
@@ -195,18 +195,18 @@ class MLPRNNConditionModel(DeterPostPriorNet):
     self._discrete = discrete
     self._cast = lambda x: tf.cast(x, prec.global_policy().compute_dtype)
 
-  def img_step(self, state, prior_update, sample=True):
-    prev_feat = self.get_feat(state)
-    x = tf.concat([prev_feat, self._cast(prior_update)])
+  def img_step(self, prev_state, prior_update, sample=True):
+    prev_feat = self.get_feat(prev_state)
+    x = tf.concat([prev_feat, self._cast(prior_update)], -1)
     x = self.forward_cond(x)
     stats = self._suff_stats_layer('img', x)
     dist = self.get_dist(stats)
     condition = dist.sample() if sample else dist.mode()
     return {'stoch': condition, **stats}
   
-  def obs_step(self, state, post_update, sample=True):
-    prev_feat = self.get_feat(state)
-    x = tf.concat([prev_feat, self._cast(post_update)])
+  def obs_step(self, prev_state, post_update, sample=True):
+    prev_feat = self.get_feat(prev_state)
+    x = tf.concat([prev_feat, self._cast(post_update)], -1)
     x = self.backward_cond(x)
     stats = self._suff_stats_layer('obs', x)
     dist = self.get_dist(stats)
