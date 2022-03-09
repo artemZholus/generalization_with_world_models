@@ -497,9 +497,9 @@ class Reasoner2Rnn(RSSM):
 
 class DualReasoner(RSSM):
   def __init__(
-    self, 
+    self,
     # these are base kwargs
-    stoch=30, deter=200, hidden=200, discrete=False, act=tf.nn.elu, std_act='softplus', min_std=0.1, 
+    stoch=30, deter=200, hidden=200, discrete=False, act=tf.nn.elu, std_act='softplus', min_std=0.1,
     # per layer specific kwargs
     cond_kws=None, subj_kws=None, obj_kws=None,
     feature_sets=None
@@ -531,7 +531,7 @@ class DualReasoner(RSSM):
     if obj_kws is not None:
       obj_kws = {}
     else:
-      obj_kws = dict(**obj_kws)    
+      obj_kws = dict(**obj_kws)
     obj_kws['stoch'] = obj_kws.get('stoch', stoch)
     obj_kws['deter'] = obj_kws.get('deter', deter)
     obj_kws['hidden'] = obj_kws.get('hidden', hidden)
@@ -568,14 +568,14 @@ class DualReasoner(RSSM):
                                           sample=sample)
     # util inference
     post_update_util = self.obj_reasoner.get_feat(post_obj)
-    post_util = self.condition_model.obs_step(state=post_update_util, 
+    post_util = self.condition_model.obs_step(state=post_update_util,
                                              sample=sample)
     # subj inference
     post_util_feat = self.condition_model.get_feat(post_util)
     post_update_subj = tf.concat([post_util_feat, emb_subj], -1)
-    post_subj, _ = self.subj_reasoner.obs_step(prev_state=prev_subj, 
-                                               embed=post_update_subj, 
-                                               prev_action=action, 
+    post_subj, _ = self.subj_reasoner.obs_step(prev_state=prev_subj,
+                                               embed=post_update_subj,
+                                               prev_action=action,
                                                sample=sample
     )
     return {'subj': post_subj, 'obj': post_obj, 'util': post_util}
@@ -608,7 +608,7 @@ class DualReasoner(RSSM):
     else:
       current_subj, current_obj = None, None
     # subj imagination
-    prior_subj = self.subj_reasoner.img_step(prev_state=prev_subj, 
+    prior_subj = self.subj_reasoner.img_step(prev_state=prev_subj,
                                              prev_action=action,
                                              #curr_state=subj_curr_state,
                                              sample=sample)
@@ -619,12 +619,6 @@ class DualReasoner(RSSM):
       task_vec = self._cast(task_vec)
       prior_update_util = tf.concat([prior_subj_feat, task_vec], -1)
     prior_util = self.condition_model.img_step(prior_update_util, sample=sample)
-    #if task_vec is not None:
-    #  ustoch = self._cast(utility['stoch'])
-    #  ctask_vec = self._cast(task_vec)
-    #  prior_update = tf.concat([ustoch, ctask_vec], -1)
-    #else:
-    #  prior_update = self._cast(utility['stoch'])
     prior_update_subj = self.condition_model.get_feat(prior_util)
     prior_obj = self.obj_reasoner.img_step(prev_state=prev_obj,
                                            prior_update=prior_update_subj,
@@ -664,11 +658,11 @@ class DualReasoner(RSSM):
   @tf.function
   def obs_step(self, state, action, emb, task_vec=None, sample=True):
     # TODO: do not infer rnn twice
-    prior = self.bottom_up_step(state, action, 
-                                task_vec=task_vec, 
+    prior = self.bottom_up_step(state, action,
+                                task_vec=task_vec,
                                 sample=sample)
-    post = self.top_down_step(state, emb['obj'], emb['subj'], 
-                              action=action, task_vec=task_vec, 
+    post = self.top_down_step(state, emb['obj'], emb['subj'],
+                              action=action, task_vec=task_vec,
                               current_state=prior, sample=sample)
     return post, prior
 
