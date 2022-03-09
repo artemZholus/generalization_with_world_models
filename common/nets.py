@@ -1,18 +1,41 @@
+import abc
+
 import numpy as np
 import tensorflow as tf
 from tensorflow.keras import layers as tfkl
+from tensorflow.keras import metrics as tfkm
 from tensorflow_probability import distributions as tfd
 from tensorflow.keras.mixed_precision import experimental as prec
 
 import common
 
 
-class PostPriorNet(common.Module):
-  def get_dist(self, state):
-    raise NotImplemented
+class PostPriorNet(common.Module, abc.ABC):
+  @abc.abstractmethod
+  def initial(self, *args, **kwargs):
+    pass
+  
+  @abc.abstractmethod
+  def get_feat(self, state):
+    pass
 
+  @abc.abstractmethod
+  def img_step(self, *args, **kwargs):
+    pass
+
+  @abc.abstractmethod
+  def obs_step(self, *args, **kwargs):
+    pass
+
+
+class StochPostPriorNet(PostPriorNet):
+  @abc.abstractmethod
+  def get_dist(self, state) -> tfd.Distribution:
+    pass
+
+  @abc.abstractmethod
   def _suff_stats_layer(self, name, x):
-    raise NotImplemented
+    pass
 
   def kl_loss(self, post, prior, forward, balance, free, free_avg):
     kld = tfd.kl_divergence
@@ -35,7 +58,19 @@ class PostPriorNet(common.Module):
     return loss, value
 
 
-class ConditionModel(PostPriorNet):
+class DeterPostPriorNet(PostPriorNet):
+  @abc.abstractmethod
+  def get_deter(self, state):
+    pass
+
+  def mse_loss(self, post, prior):
+    mse = tfkm.mean_squared_error
+    value = mse(self.get_deter(prior), self.get_deter(post))
+    loss = value.mean()
+    return loss, value
+
+
+class ConditionModel(StochPostPriorNet):
   def __init__(self, size=32, hidden=200, layers=2, act=tf.nn.elu, discrete=False):
     super().__init__()
     self._size = size
@@ -45,14 +80,14 @@ class ConditionModel(PostPriorNet):
     self._discrete = discrete
     self._cast = lambda x: tf.cast(x, prec.global_policy().compute_dtype)
 
-  def imagine(self, state, sample=True):
+  def img_step(self, state, sample=True):
     emb = self.forward_cond(state)
     stats = self._suff_stats_layer('img', emb)
     dist = self.get_dist(stats)
     condition = dist.sample() if sample else dist.mode()
     return {'stoch': condition, **stats}
   
-  def observe(self, state, sample=True):
+  def obs_step(self, state, sample=True):
     emb = self.backward_cond(state)
     stats = self._suff_stats_layer('obs', emb)
     dist = self.get_dist(stats)

@@ -76,6 +76,7 @@ class Replay:
     if sequential:
       example['ep_name'] = tf.constant(['111'])
       example['idx'] = tf.convert_to_tensor([111])
+    example['t'] = tf.convert_to_tensor(np.array([t for t in range(length)]))
     types = {k: v.dtype for k, v in example.items()}
     shapes = {k: (None,) + v.shape[1:] for k, v in example.items()}
     if not sequential:
@@ -195,6 +196,9 @@ def sample_episodes(directory=None, length=None, balance=False, rescan=100, cach
         else:
           index = int(random.randint(0, available + 1))
         episode = {k: v[index: index + length] for k, v in episode.items()}
+        episode['t'] = tf.convert_to_tensor(np.array([
+          t for t in range(index, index+length)
+        ]))
       yield episode
 
 def iterate_episodes(episodes=None, directory=None, length=None):
