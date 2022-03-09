@@ -156,6 +156,7 @@ class ActorCritic(common.Module):
     metrics.update(self.actor_opt(actor_tape, actor_loss, self.actor))
     metrics.update(self.critic_opt(critic_tape, critic_loss, self.critic))
     metrics.update(**mets1, **mets2, **mets3)
+    metrics['average_feat'] = rfeat.mean()
     self.update_slow_target()  # Variables exist after first forward pass.
     return metrics
 
