@@ -632,6 +632,7 @@ class DualReasoner(RSSM):
     prior_util = self.condition_model.img_step(state=None,
                                                prior_update=prior_update_util, 
                                                sample=sample)
+    # obj imagination
     prior_update_obj = self.condition_model.get_feat(prior_util)
     prior_obj = self.obj_reasoner.img_step(prev_state=prev_obj,
                                            prior_update=prior_update_obj,
