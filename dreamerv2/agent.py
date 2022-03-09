@@ -3,6 +3,7 @@ from tensorflow.keras import mixed_precision as prec
 
 import elements
 import common
+import math
 import expl
 import world_model
 
@@ -104,7 +105,15 @@ class Agent(common.Module):
       zs_metrics = self._zero_shot_ac.train(self.wm, start, reward)
       metrics.update({f'zero-shot/{k}': v for k, v in zs_metrics.items()})
     if do_ac_step:
-      metrics.update(self._task_behavior.train(self.wm, start, reward, task_vec=data.get('task_vector', None)))
+      # TODO: preprocess task vec somewhere
+      if 'task_vector' in data:
+        angle = data['task_vector'][..., -1:]
+        angle = angle / 180. * math.pi
+        angle -= math.pi
+        task_vector = tf.concat([data['task_vector'][..., :-1], angle], -1)
+      else:
+        task_vector = None
+      metrics.update(self._task_behavior.train(self.wm, start, reward, task_vec=task_vector))
     if self.config.expl_behavior != 'greedy':
       if self.config.pred_discount:
         data = tf.nest.map_structure(lambda x: x[:, :-1], data)
