@@ -45,7 +45,7 @@ class StochPostPriorNet(PostPriorNet):
   def _suff_stats_layer(self, name, x):
     pass
 
-  def kl_loss(self, post, prior, forward, balance, free, free_avg):
+  def kl_loss(self, post, prior, forward, balance, free, free_avg, **kwargs):
     kld = tfd.kl_divergence
     sg = lambda x: tf.nest.map_structure(tf.stop_gradient, x)
     lhs, rhs = (prior, post) if forward else (post, prior)
@@ -258,6 +258,103 @@ class MLPRNNConditionModel(StochPostPriorNet):
   def loss(self, post, prior, **kwargs):
     kl_loss, kl_value = self.kl_loss(post, prior, **kwargs)
     return {'kl': kl_loss}, {'kl': kl_value}
+
+
+class TwinHMMConditionModel(StochPostPriorNet, DeterPostPriorNet):
+  def __init__(self, size=50, hidden=50, act=tf.nn.elu, discrete=False, **kwargs):
+    super().__init__()
+    self._size = size
+    self._stoch = size
+    self._deter = hidden
+    self._discrete = discrete
+    self._act = act
+    self.prio_cell = common.GRUCell(self._deter, norm=True)
+    self.post_cell = common.GRUCell(self._deter, norm=True)
+    self._cast = lambda x: tf.cast(x, prec.global_policy().compute_dtype)
+
+  def initial(self, batch_size):
+    dtype = prec.global_policy().compute_dtype
+    if self._discrete:
+      state = dict(
+        logit=tf.zeros([batch_size, self._size, self._discrete], dtype),
+        stoch=tf.zeros([batch_size, self._stoch, self._discrete], dtype),
+        deter=self.prio_cell.get_initial_state(None, batch_size, dtype),
+        out=tf.zeros([batch_size, self._deter], dtype))
+    else:
+      state = dict(
+        mean=tf.zeros([batch_size, self._size], dtype),
+        std=tf.zeros([batch_size, self._size], dtype),
+        stoch=tf.zeros([batch_size, self._size], dtype),
+        deter=self.prio_cell.get_initial_state(None, batch_size, dtype),
+        out=tf.zeros([batch_size, self._deter], dtype))
+    return state
+
+  def img_step(self, prev_state, prior_update, sample=True):
+    prev_feat = self.get_feat(prev_state)
+    if self._discrete:
+      shape = prev_feat.shape[:-2] + [self._stoch * self._discrete]
+      prev_feat = tf.reshape(prev_feat, shape)
+    x = tf.concat([prev_feat, self._cast(prior_update)], -1)
+    x = self.get('img_in', tfkl.Dense, self._deter, self._act)(x)
+    prev_deter = self.get_deter(prev_state)
+    x, deter = self.prio_cell(x, [prev_deter])
+    deter = deter[0]
+    stats = self._suff_stats_layer('img_dist', x)
+    dist = self.get_dist(stats)
+    condition = dist.sample() if sample else dist.mode()
+    return {'stoch': condition, 'deter': deter, 'out': x, **stats}
+  
+  def obs_step(self, prev_state, post_update, sample=True):
+    prev_feat = self.get_feat(prev_state)
+    if self._discrete:
+      shape = prev_feat.shape[:-2] + [self._stoch * self._discrete]
+      prev_feat = tf.reshape(prev_feat, shape)
+    x = tf.concat([prev_feat, self._cast(post_update)], -1)
+    x = self.get('obs_in', tfkl.Dense, self._deter, self._act)(x)
+    prev_deter = self.get_deter(prev_state)
+    x, deter = self.post_cell(x, [prev_deter])
+    deter = deter[0]
+    stats = self._suff_stats_layer('obs_dist', x)
+    dist = self.get_dist(stats)
+    condition = dist.sample() if sample else dist.mode()
+    return {'stoch': condition, 'deter': deter, 'out': x, **stats}
+
+  def get_stoch(self, state):
+    return self._cast(state['stoch'])
+
+  def get_deter(self, state):
+    return state['deter']
+
+  def get_feat(self, state):
+    return self.get_stoch(state)
+
+  def get_dist(self, state):
+    if self._discrete:
+      logit = state['logit']
+      logit = tf.cast(logit, tf.float32)
+      dist = tfd.Independent(common.OneHotDist(logit), 1)
+    else:
+      mean, std = state['mean'], state['std']
+      mean = tf.cast(mean, tf.float32)
+      std = tf.cast(std, tf.float32)
+      dist = tfd.MultivariateNormalDiag(mean, std)
+    return dist
+  
+  def _suff_stats_layer(self, name, x):
+    if self._discrete:
+      x = self.get(name, tfkl.Dense, self._size * self._discrete, None)(x)
+      logit = tf.reshape(x, x.shape[:-1] + [self._size, self._discrete])
+      return {'logit': logit}
+    else:
+      x = self.get(name, tfkl.Dense, 2 * self._size, None)(x)
+      mean, std = tf.split(x, 2, -1)
+      std = 2 * tf.nn.sigmoid(std / 2)
+      return {'mean': mean, 'std': std}
+
+  def loss(self, post, prior, **kwargs):
+    kl_loss, kl_value = self.kl_loss(post, prior, **kwargs)
+    mse_loss, mse_value = self.mse_loss(post, prior)
+    return {'kl': kl_loss, 'mse': mse_loss}, {'kl': kl_value, 'mse': mse_value}
 
 
 class ConvEncoder(common.Module):
