@@ -413,7 +413,7 @@ causal:
   cond_kws.size: 200
   cond_kws.discrete: 0
   iid_eval: False
-  steps: 2e6
+  steps: 1e6
   world_model: causal
 
 mt10:
