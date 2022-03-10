@@ -577,7 +577,7 @@ class DualReasoner(RSSM):
     post_update_util = tf.concat(
       [self.obj_reasoner.get_feat(post_obj), 
        self.subj_reasoner.get_feat(post_subj)], -1)
-    post_util = self.condition_model.observe(post_update_util, sample=sample)
+    post_util = self.condition_model.obs_step(post_update_util, sample=sample)
     
     return {'subj': post_subj, 'obj': post_obj, 'util': post_util}
 
