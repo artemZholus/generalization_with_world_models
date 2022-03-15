@@ -361,7 +361,7 @@ class CausalWorldModel(WorldModel):
   def __init__(self, step, config):
     super().__init__(step, config)
     shape = config.image_size + (config.img_channels,)
-    self.rssm = common.DualReasoner(**config.rssm, 
+    self.rssm = common.DualInfluencer(**config.rssm, 
       subj_kws=config.subj_rssm, cond_kws=config.cond_kws, obj_kws=config.obj_rssm, 
       feature_sets=config.feature_sets,
     )

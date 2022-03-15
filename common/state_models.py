@@ -592,7 +592,7 @@ class DualReasoner(RSSM):
     return {'subj': post_subj, 'obj': post_obj, 'util': post_util}
 
   def mut_inf(self, sample, kind='obj'):
-    NUM_SAMPLES = 5
+    NUM_SAMPLES = 3
     dist = self.get_dist(sample)
     stoch = dist[kind].sample(NUM_SAMPLES)
     curr_prob = dist[kind].log_prob(stoch)
@@ -853,7 +853,7 @@ class DualInfluencer(DualReasoner):
     # util inference
     post_feat_subj = self.subj_reasoner.get_feat(post_subj)
     post_feat_obj = self.obj_reasoner.get_feat(post_obj)
-    post_update_util = tf.concat([post_feat_subj, post_feat_obj])
+    post_update_util = tf.concat([post_feat_subj, post_feat_obj], -1)
     post_util = self.condition_model.obs_step(prev_state=None,
                                               post_update=post_update_util,
                                               sample=sample)
