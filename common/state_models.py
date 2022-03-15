@@ -746,6 +746,120 @@ class DualReasoner(RSSM):
     return loss, value
 
 
+class DualInfluencer(DualReasoner):
+  def __init__(
+    self,
+    # these are base kwargs
+    stoch=30, deter=200, hidden=200, discrete=False, act=tf.nn.elu, std_act='softplus', min_std=0.1,
+    # per layer specific kwargs
+    cond_kws=None, subj_kws=None, obj_kws=None,
+    feature_sets=None
+  ):
+    # cond_stoch=50,
+    if cond_kws is None:
+      cond_kws = {}
+    else:
+      cond_kws = dict(**cond_kws)
+    cond_kws = dict(cond_kws)
+    cond_kws['hidden'] = cond_kws.get('hidden', hidden)
+    cond_kws['act'] = cond_kws.get('act', act)
+    cond_kws['discrete'] = cond_kws.get('discrete', discrete)
+    cond_kws['layers'] = cond_kws.get('layers', 2)
+    cond_kws['size'] = cond_kws.get('size', 50) # 50 is default cond model stoch size
+
+    if subj_kws is None:
+      subj_kws = {}
+    else:
+      subj_kws = dict(**subj_kws)
+    subj_kws['stoch'] = subj_kws.get('stoch', stoch)
+    subj_kws['deter'] = subj_kws.get('deter', deter)
+    subj_kws['hidden'] = subj_kws.get('hidden', hidden)
+    subj_kws['discrete'] = subj_kws.get('discrete', discrete)
+    subj_kws['act'] = subj_kws.get('act', act)
+    subj_kws['std_act'] = subj_kws.get('std_act', std_act)
+    subj_kws['min_std'] = subj_kws.get('mid_std', min_std)
+
+    if obj_kws is not None:
+      obj_kws = {}
+    else:
+      obj_kws = dict(**obj_kws)
+    obj_kws['stoch'] = obj_kws.get('stoch', stoch)
+    obj_kws['deter'] = obj_kws.get('deter', deter)
+    obj_kws['hidden'] = obj_kws.get('hidden', hidden)
+    obj_kws['discrete'] = obj_kws.get('discrete', discrete)
+    obj_kws['act'] = obj_kws.get('act', act)
+    obj_kws['std_act'] = obj_kws.get('std_act', std_act)
+    obj_kws['min_std'] = obj_kws.get('mid_std', min_std)
+
+    self._stoch = stoch
+    self._deter = deter
+    self._hidden = hidden
+    self._discrete = discrete
+    self._act = getattr(tf.nn, act) if isinstance(act, str) else act
+    self._std_act = std_act
+    self._min_std = min_std
+    self.feature_sets = [] if feature_sets is None else feature_sets
+    self._cast = lambda x: tf.cast(x, prec.global_policy().compute_dtype)
+    self.subj_reasoner = RSSM(**subj_kws)
+    self.condition_model = common.RPCConditionModel(**cond_kws)
+    self.obj_reasoner = ReasonerMLP(**obj_kws)
+
+  @tf.function
+  def bottom_up_step(self, prev_state, action, task_vec=None, current_state=None, sample=True):
+    prev_subj, prev_obj, prev_util = prev_state['subj'], prev_state['obj'], prev_state['util']
+    if current_state is not None:
+      current_subj, current_obj, current_util = current_state['subj'], current_state['obj'], current_state['util']
+    else:
+      current_subj, current_obj, current_util = None, None, None
+    # subj imagination
+    prior_subj = self.subj_reasoner.img_step(prev_state=prev_subj,
+                                             prev_action=action,
+                                             #curr_state=subj_curr_state,
+                                             sample=sample)
+    # util imagination
+    prior_subj_feat = self.subj_reasoner.get_feat(prior_subj)
+    prior_update_util = prior_subj_feat
+    prior_util = self.condition_model.img_step(prev_state=prev_util,
+                                               prior_update=prior_update_util, 
+                                               sample=sample)
+    # obj imagination
+    prior_update_subj = self.condition_model.get_feat(prior_util)
+    prior_obj = self.obj_reasoner.img_step(prev_state=prev_obj,
+                                           prior_update=prior_update_subj,
+                                           sample=sample)
+    return {'subj': prior_subj, 'obj': prior_obj, 'util': prior_util}
+
+  @tf.function
+  def top_down_step(self, prev_state, emb_obj=None, emb_subj=None, action=None, task_vec=None, current_state=None, sample=True):
+    prev_subj, prev_obj, prev_util = prev_state['subj'], prev_state['obj'], prev_state['util']
+    if current_state is not None:
+      current_subj, current_obj, current_util = current_state['subj'], current_state['obj'], current_state['util']
+    else:
+      current_subj, current_obj, current_util = None, None, None
+    # obj inference
+    post_update_obj = emb_obj
+    post_obj = self.obj_reasoner.obs_step(prev_state=prev_obj,
+                                          current_state=current_obj,
+                                          post_update=post_update_obj,
+                                          sample=sample)
+    
+    # subj inference
+    post_update_subj = emb_subj
+    post_subj, _ = self.subj_reasoner.obs_step(prev_state=prev_subj, 
+                                               embed=post_update_subj, 
+                                               prev_action=action, 
+                                               sample=sample)
+    
+    # util inference
+    post_feat_subj = self.subj_reasoner.get_feat(post_subj)
+    post_feat_obj = self.obj_reasoner.get_feat(post_obj)
+    post_update_util = tf.concat([post_feat_subj, post_feat_obj])
+    post_util = self.condition_model.obs_step(prev_state=None,
+                                              post_update=post_update_util,
+                                              sample=sample)
+    
+    return {'subj': post_subj, 'obj': post_obj, 'util': post_util}
+
 class DualRSSM(common.Module):
 
   def __init__(self, subj_config, obj_config, subj_strategy):
