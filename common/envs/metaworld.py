@@ -162,7 +162,8 @@ class MetaWorld:
       if transparent:
         dom_transparent = metaworld.ML1(task_name, transparent_sawyer=True)
     for name, env_cls in dom.train_classes.items():
-      env = env_cls()
+      with NullContext() if syncfile is None else FileLock(syncfile):
+        env = env_cls()
       all_tasks = [task for task in dom.train_tasks
                     if task.env_name == name]
       task_id = random.choice(range(len(all_tasks)))
@@ -172,10 +173,11 @@ class MetaWorld:
       self.env_tasks[name] = (all_tasks, task_id)
       self.envs_cls[name] = env
       if transparent:
-        tr_env_cls = dom_transparent.train_classes[name]
-        tr_env = Async(partial(tr_env_cls, transparent_sawyer=True))
-        self.tr_envs_cls[name] = tr_env
-        tr_env.call('set_task', task)()
+        with NullContext() if syncfile is None else FileLock(syncfile):
+          tr_env_cls = dom_transparent.train_classes[name]
+          tr_env = Async(partial(tr_env_cls, transparent_sawyer=True))
+          self.tr_envs_cls[name] = tr_env
+          tr_env.call('set_task', task)()
     np.random.seed(worker_id or 1)
     self.worker_id = worker_id
     if worker_id is None:
