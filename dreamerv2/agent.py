@@ -61,8 +61,8 @@ class Agent(common.Module):
     data = self.wm.preprocess(obs)
     embed = self.wm.encoder(data)
     sample = (mode == 'train') or not self.config.eval_state_mean
-    if 'task_vector' in obs:
-      task_vec = tf.cast(obs['task_vector'], dtype=self.dtype)
+    if 'task_vector' in data:
+      task_vec = tf.cast(data['task_vector'], dtype=self.dtype)
     else:
       task_vec = None
     latent, _ = self.wm.rssm.obs_step(latent, action, embed, task_vec=task_vec, sample=sample)
