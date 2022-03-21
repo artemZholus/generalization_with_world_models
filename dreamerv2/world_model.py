@@ -55,14 +55,6 @@ class WorldModel(common.Module):
     post, prior = self.rssm.observe(embed, data['action'], state, task_vector=data.get('task_vector', None))
     return post, prior
 
-  @tf.function
-  def observe_full(self, data, state=None):
-    print('calling wm observe')
-    data = self.preprocess(data)
-    embed = self.encoder(data)
-    post, prior = self.rssm.observe(embed, data['action'], state, task_vector=data.get('task_vector', None))
-    return post, prior
-
 
   def loss(self, data, state=None):
     print('calling wm loss')
@@ -106,23 +98,24 @@ class WorldModel(common.Module):
     }
     return metrics
 
-  def imagine(self, policy, start, horizon, task_vec=None):
+  def imagine(self, policy, start, horizon, task_vec=None, obj_gt=None):
     print('calling wm imagine')
     flatten = lambda x: x.reshape([-1] + list(x.shape[2:]))
     # start = {k: flatten(v) for k, v in start.items()}
     start = tf.nest.map_structure(flatten, start)
     task_vec = flatten(task_vec)
+    obj_gt = flatten(obj_gt)
     def step(prev, _):
       state, _, _, _, _ = prev
-      pfeat = self.rssm.get_feat(state, key='policy', task_vec=task_vec)
-      vfeat = self.rssm.get_feat(state, key='value', task_vec=task_vec)
-      rfeat = self.rssm.get_feat(state, key='reward', task_vec=task_vec)
+      pfeat = self.rssm.get_feat(state, key='policy', task_vec=task_vec, obj_gt=obj_gt)
+      vfeat = self.rssm.get_feat(state, key='value', task_vec=task_vec, obj_gt=obj_gt)
+      rfeat = self.rssm.get_feat(state, key='reward', task_vec=task_vec, obj_gt=obj_gt)
       action = policy(tf.stop_gradient(pfeat)).sample()
       succ = self.rssm.img_step(state, action, task_vec=task_vec)
       return succ, pfeat, vfeat, rfeat, action
-    pfeat = 0 * self.rssm.get_feat(start, key='policy', task_vec=task_vec)
-    vfeat = 0 * self.rssm.get_feat(start, key='value', task_vec=task_vec)
-    rfeat = 0 * self.rssm.get_feat(start, key='reward', task_vec=task_vec)
+    pfeat = 0 * self.rssm.get_feat(start, key='policy', task_vec=task_vec, obj_gt=obj_gt)
+    vfeat = 0 * self.rssm.get_feat(start, key='value', task_vec=task_vec, obj_gt=obj_gt)
+    rfeat = 0 * self.rssm.get_feat(start, key='reward', task_vec=task_vec, obj_gt=obj_gt)
     action = policy(pfeat).mode()
     succs, pfeats, vfeats, rfeats, actions = common.static_scan(
         step, tf.range(horizon), (start, pfeat, vfeat, rfeat, action))

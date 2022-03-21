@@ -65,8 +65,12 @@ class Agent(common.Module):
       task_vec = tf.cast(data['task_vector'], dtype=self.dtype)
     else:
       task_vec = None
+    if 'obj_gt' in data:
+      obj_gt = tf.cast(data['obj_gt'], dtype=self.dtype)
+    else:
+      obj_gt = None
     latent, _ = self.wm.rssm.obs_step(latent, action, embed, task_vec=task_vec, sample=sample)
-    feat = self.wm.rssm.get_feat(latent, key='policy', task_vec=task_vec)
+    feat = self.wm.rssm.get_feat(latent, key='policy', task_vec=task_vec, obj_gt=obj_gt)
     behaviour = self._task_behavior
     expl_behavour = self._expl_behavior
     if second_agent:
@@ -94,9 +98,8 @@ class Agent(common.Module):
     if do_wm_step:
       state, outputs, mets = self.wm.train(data, state)
     else:
-      state, outputs = self.wm.observe(data, state)
-    if do_wm_step:
-      metrics.update(mets)
+      state, outputs, mets = self.wm.wm_loss(data, state)
+    metrics.update(mets)
     start = outputs['post']
     if self.config.pred_discount:  # Last step could be terminal.
       start = tf.nest.map_structure(lambda x: x[:, :-1], start)
@@ -113,7 +116,9 @@ class Agent(common.Module):
         task_vector = tf.concat([data['task_vector'][..., :-1], angle], -1)
       else:
         task_vector = None
-      metrics.update(self._task_behavior.train(self.wm, start, reward, task_vec=task_vector))
+      if 'obj_gt' in data:
+        obj_gt = tf.cast(data['obj_gt'], dtype=self.dtype)
+      metrics.update(self._task_behavior.train(self.wm, start, reward, task_vec=task_vector, obj_gt=obj_gt))
     if self.config.expl_behavior != 'greedy':
       if self.config.pred_discount:
         data = tf.nest.map_structure(lambda x: x[:, :-1], data)
@@ -142,12 +147,12 @@ class ActorCritic(common.Module):
     self.actor_opt = common.Optimizer('actor', **config.actor_opt)
     self.critic_opt = common.Optimizer('critic', **config.critic_opt)
 
-  def train(self, world_model, start, reward_fn, task_vec=None):
+  def train(self, world_model, start, reward_fn, task_vec=None, obj_gt=None):
     print('calling ac train')
     metrics = {}
     hor = self.config.imag_horizon
     with tf.GradientTape() as actor_tape:
-      pfeat, vfeat, rfeat, state, action, disc = world_model.imagine(self.actor, start, hor, task_vec=task_vec)
+      pfeat, vfeat, rfeat, state, action, disc = world_model.imagine(self.actor, start, hor, task_vec=task_vec, obj_gt=obj_gt)
       reward = reward_fn(rfeat, state, action)
       target, weight, mets1 = self.target(vfeat, action, reward, disc)
       actor_loss, mets2 = self.actor_loss(pfeat, vfeat, action, target, weight)

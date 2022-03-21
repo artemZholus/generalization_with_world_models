@@ -630,7 +630,7 @@ class DualReasoner(RSSM):
   def img_step(self, state, action, task_vec=None, sample=True):
     return self.bottom_up_step(state, action, task_vec=task_vec, sample=sample)
 
-  def get_feat(self, state, key=None, task_vec=None):
+  def get_feat(self, state, key=None, task_vec=None, obj_gt=None):
     features = []
     for name, feat_set in self.feature_sets.items():
       if key is not None and name in key:
@@ -643,6 +643,8 @@ class DualReasoner(RSSM):
             feat_vec = self.condition_model.get_feat(state['util'])
           elif feat == 'task':
             feat_vec = self._cast(task_vec)
+          elif feat == 'obj_gt':
+            feat_vec = self._cast(obj_gt)
           features.append(feat_vec)
         return tf.concat(features, -1)
     subj_feat = self.subj_reasoner.get_feat(state['subj'])
