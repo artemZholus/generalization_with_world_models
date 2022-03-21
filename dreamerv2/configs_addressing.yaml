@@ -98,7 +98,7 @@ defaults:
     obj: [obj]
     policy: [subj, obj, util]
     value: [subj, obj, util]
-    reward: [subj, obj, util]
+    reward: [util]
 
   zero_shot_agent:
     enabled: False
