@@ -392,6 +392,9 @@ causal:
   transparent: True
   obj_features: 'img'
   grad_heads: [obj_image, subj_image, reward]
+  feature_sets.reward: [util, obj]
+  feature_sets.policy: [util, subj]
+  feature_sets.value: [util, obj]
   critic.layers: 3
   critic_opt.wd: 0.000001
   decoder.act: elu
@@ -410,7 +413,7 @@ causal:
   reward_head.layers: 3
   # cond_model_size: 32
   # cond_kws.discrete: 16
-  cond_kws.size: 200
+  cond_kws.size: 50
   cond_kws.discrete: 0
   iid_eval: False
   steps: 2e6
