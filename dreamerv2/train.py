@@ -8,6 +8,7 @@ import warnings
 from functools import partial
 from copy import deepcopy as copy
 import wandb
+import atexit
 
 try:
   import rich.traceback
@@ -32,6 +33,7 @@ import proposal
 import embeddings
 import elements
 import common
+from common.envs.async_env import Async
 
 configs = pathlib.Path(sys.argv[0]).parent / 'configs_addressing.yaml'
 configs = yaml.safe_load(configs.read_text())
@@ -189,6 +191,7 @@ def per_episode(ep, mode):
   logger.write()
 
 print('Create envs.')
+atexit.register(Async.close_all)
 # train_envs = [make_env(config, 'train') for _ in range(config.num_envs)]
 # eval_envs = [make_env(config, 'eval') for _ in range(config.num_envs)]
 dummy_env = make_env(config, 'train')
@@ -254,7 +257,6 @@ def generate_tasks(name, kind):
     vec[-1] = val
     tasks.append(vec)
   return {f'{name}-v2': tasks}
-
 
 if config.iid_eval:
   lockfile = syncfile if config.test_tasks_file is None else config.test_tasks_file

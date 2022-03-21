@@ -3,6 +3,7 @@ from tensorflow.keras import mixed_precision as prec
 
 import elements
 import common
+import math
 import expl
 import world_model
 
@@ -60,12 +61,16 @@ class Agent(common.Module):
     data = self.wm.preprocess(obs)
     embed = self.wm.encoder(data)
     sample = (mode == 'train') or not self.config.eval_state_mean
-    if 'task_vector' in obs:
-      task_vec = tf.cast(obs['task_vector'], dtype=self.dtype)
+    if 'task_vector' in data:
+      task_vec = tf.cast(data['task_vector'], dtype=self.dtype)
     else:
       task_vec = None
+    if 'obj_gt' in data:
+      obj_gt = tf.cast(data['obj_gt'], dtype=self.dtype)
+    else:
+      obj_gt = None
     latent, _ = self.wm.rssm.obs_step(latent, action, embed, task_vec=task_vec, sample=sample)
-    feat = self.wm.rssm.get_feat(latent, key='policy')
+    feat = self.wm.rssm.get_feat(latent, key='policy', task_vec=task_vec, obj_gt=obj_gt)
     behaviour = self._task_behavior
     expl_behavour = self._expl_behavior
     if second_agent:
@@ -93,9 +98,8 @@ class Agent(common.Module):
     if do_wm_step:
       state, outputs, mets = self.wm.train(data, state, full=full)
     else:
-      state, outputs = self.wm.observe(data, state)
-    if do_wm_step:
-      metrics.update(mets)
+      state, outputs, mets = self.wm.wm_loss(data, state)
+    metrics.update(mets)
     start = outputs['post']
     if self.config.pred_discount:  # Last step could be terminal.
       start = tf.nest.map_structure(lambda x: x[:, :-1], start)
@@ -104,7 +108,17 @@ class Agent(common.Module):
       zs_metrics = self._zero_shot_ac.train(self.wm, start, reward)
       metrics.update({f'zero-shot/{k}': v for k, v in zs_metrics.items()})
     if do_ac_step:
-      metrics.update(self._task_behavior.train(self.wm, start, reward, task_vec=data.get('task_vector', None)))
+      # TODO: preprocess task vec somewhere
+      if 'task_vector' in data:
+        angle = data['task_vector'][..., -1:]
+        angle = angle / 180. * math.pi
+        angle -= math.pi
+        task_vector = tf.concat([data['task_vector'][..., :-1], angle], -1)
+      else:
+        task_vector = None
+      if 'obj_gt' in data:
+        obj_gt = tf.cast(data['obj_gt'], dtype=self.dtype)
+      metrics.update(self._task_behavior.train(self.wm, start, reward, task_vec=task_vector, obj_gt=obj_gt))
     if self.config.expl_behavior != 'greedy':
       if self.config.pred_discount:
         data = tf.nest.map_structure(lambda x: x[:, :-1], data)
@@ -133,35 +147,36 @@ class ActorCritic(common.Module):
     self.actor_opt = common.Optimizer('actor', **config.actor_opt)
     self.critic_opt = common.Optimizer('critic', **config.critic_opt)
 
-  def train(self, world_model, start, reward_fn, task_vec=None):
+  def train(self, world_model, start, reward_fn, task_vec=None, obj_gt=None):
     print('calling ac train')
     metrics = {}
     hor = self.config.imag_horizon
     with tf.GradientTape() as actor_tape:
-      pfeat, rfeat, state, action, disc = world_model.imagine(self.actor, start, hor, task_vec=task_vec)
+      pfeat, vfeat, rfeat, state, action, disc = world_model.imagine(self.actor, start, hor, task_vec=task_vec, obj_gt=obj_gt)
       reward = reward_fn(rfeat, state, action)
-      target, weight, mets1 = self.target(pfeat, action, reward, disc)
-      actor_loss, mets2 = self.actor_loss(pfeat, action, target, weight)
+      target, weight, mets1 = self.target(vfeat, action, reward, disc)
+      actor_loss, mets2 = self.actor_loss(pfeat, vfeat, action, target, weight)
     with tf.GradientTape() as critic_tape:
-      critic_loss, mets3 = self.critic_loss(pfeat, action, target, weight)
+      critic_loss, mets3 = self.critic_loss(vfeat, action, target, weight)
     metrics.update(self.actor_opt(actor_tape, actor_loss, self.actor))
     metrics.update(self.critic_opt(critic_tape, critic_loss, self.critic))
     metrics.update(**mets1, **mets2, **mets3)
+    metrics['average_feat'] = rfeat.mean()
     self.update_slow_target()  # Variables exist after first forward pass.
     return metrics
 
-  def actor_loss(self, feat, action, target, weight):
+  def actor_loss(self, feat, vfeat, action, target, weight):
     print('calling a loss')
     metrics = {}
     policy = self.actor(tf.stop_gradient(feat))
     if self.config.actor_grad == 'dynamics':
       objective = target
     elif self.config.actor_grad == 'reinforce':
-      baseline = self.critic(feat[:-1]).mode()
+      baseline = self.critic(vfeat[:-1]).mode()
       advantage = tf.stop_gradient(target - baseline)
       objective = policy.log_prob(action)[:-1] * advantage
     elif self.config.actor_grad == 'both':
-      baseline = self.critic(feat[:-1]).mode()
+      baseline = self.critic(vfeat[:-1]).mode()
       advantage = tf.stop_gradient(target - baseline)
       objective = policy.log_prob(action)[:-1] * advantage
       mix = common.schedule(self.config.actor_grad_mix, self.step)

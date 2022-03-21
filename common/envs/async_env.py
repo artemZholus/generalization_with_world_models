@@ -6,7 +6,7 @@ import traceback
 from filelock import FileLock
 
 class Async(object):
-
+  REGISTRY = []
   # Message types for communication via the pipe.
   _ACCESS = 1
   _CALL = 2
@@ -24,8 +24,9 @@ class Async(object):
     self._strategy = strategy
     self._conn, conn = mp.Pipe()
     self._process = mp.Process(target=self._worker, args=(constructor, conn))
-    atexit.register(self.close)
     self._process.start()
+    with FileLock(f'/tmp/async_registry'):
+      Async.REGISTRY.append(self)
     self._observ_space = None
     self._action_space = None
 
@@ -50,6 +51,13 @@ class Async(object):
     self._conn.send((self._CALL, payload))
     return self._receive
 
+  @classmethod
+  def close_all(cls):
+    while len(Async.REGISTRY) != 0:
+      with FileLock('/tmp/async_registry'):
+        process = Async.REGISTRY.pop()
+        process.close()
+
   def close(self):
     try:
       self._conn.send((self._CLOSE, None))
@@ -57,7 +65,8 @@ class Async(object):
     except IOError:
       # The connection was already closed.
       pass
-    self._process.join()
+    self._process.terminate()
+    print('process joined!')
 
   def step(self, action, blocking=True):
     promise = self.call('step', action)
@@ -88,8 +97,8 @@ class Async(object):
 
   def _worker(self, constructor, conn):
     try:
-      t = random.random() * 5
-      time.sleep(t)
+      # t = random.random() * 5
+      # time.sleep(t)
       env = constructor()
       while True:
         try:
@@ -110,6 +119,7 @@ class Async(object):
           conn.send((self._RESULT, result))
           continue
         if message == self._CLOSE:
+          print('received CLOSE message.')
           assert payload is None
           break
         raise KeyError('Received message of unknown type {}'.format(message))
