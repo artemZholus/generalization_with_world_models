@@ -124,7 +124,7 @@ class WorldModel(common.Module):
     else:
       discount = self.config.discount * tf.ones_like(pfeats[..., 0])
     return pfeats, vfeats, rfeats, states, actions, discount
-  
+
   @tf.function
   def preprocess(self, obs):
     obs = obs.copy()
@@ -139,8 +139,7 @@ class WorldModel(common.Module):
       obj_image = obj * obs['image'][..., 3:]
       input_image = tf.concat([subj_image, obj_image], axis=-1)
       obs['input_image'] = input_image
-      # obs['image'] = obs['image'][..., :3]
-      obs['image'] = input_image
+      obs['image'] = obs['image'][..., :3]
     else:
       obs['image'] = tf.cast(obs['image'][..., :3], self.dtype) / 255.0 - 0.5
     obs['reward'] = getattr(tf, self.config.clip_rewards)(obs['reward'])
@@ -366,8 +365,8 @@ class CausalWorldModel(WorldModel):
   def __init__(self, step, config):
     super().__init__(step, config)
     shape = config.image_size + (config.img_channels,)
-    self.rssm = common.DualReasoner(**config.rssm, 
-      subj_kws=config.subj_rssm, cond_kws=config.cond_kws, obj_kws=config.obj_rssm, 
+    self.rssm = common.DualReasoner(**config.rssm,
+      subj_kws=config.subj_rssm, cond_kws=config.cond_kws, obj_kws=config.obj_rssm,
       feature_sets=config.feature_sets,
     )
     self.encoder = common.DualConvEncoder(config.subj_encoder, config.obj_encoder, config.obj_features)

@@ -7,6 +7,7 @@ from filelock import FileLock
 
 class Async(object):
   REGISTRY = []
+  UID = ''
   # Message types for communication via the pipe.
   _ACCESS = 1
   _CALL = 2
@@ -25,7 +26,7 @@ class Async(object):
     self._conn, conn = mp.Pipe()
     self._process = mp.Process(target=self._worker, args=(constructor, conn))
     self._process.start()
-    with FileLock(f'/tmp/async_registry'):
+    with FileLock(f'/tmp/async_registry{Async.UID}'):
       Async.REGISTRY.append(self)
     self._observ_space = None
     self._action_space = None
@@ -54,7 +55,7 @@ class Async(object):
   @classmethod
   def close_all(cls):
     while len(Async.REGISTRY) != 0:
-      with FileLock('/tmp/async_registry'):
+      with FileLock(f'/tmp/async_registry{Async.UID}'):
         process = Async.REGISTRY.pop()
         process.close()
 

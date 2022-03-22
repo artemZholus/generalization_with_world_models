@@ -26,6 +26,7 @@ sys.path.append(str(pathlib.Path(__file__).parent.parent))
 import numpy as np
 import ruamel.yaml as yaml
 import tensorflow as tf
+import uuid
 from tqdm import tqdm
 
 import agent
@@ -191,6 +192,7 @@ def per_episode(ep, mode):
   logger.write()
 
 print('Create envs.')
+Async.UID = str(uuid.uuid4().hex)
 atexit.register(Async.close_all)
 # train_envs = [make_env(config, 'train') for _ in range(config.num_envs)]
 # eval_envs = [make_env(config, 'eval') for _ in range(config.num_envs)]
