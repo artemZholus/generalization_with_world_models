@@ -129,7 +129,7 @@ class Agent(common.Module):
 
   @tf.function
   def report(self, data):
-    return {'s': self.wm.video_pred(data)}
+    return self.wm.video_pred(data)
 
 class ActorCritic(common.Module):
 
