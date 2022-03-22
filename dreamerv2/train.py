@@ -81,6 +81,8 @@ if config.precision == 16:
   prec.set_policy(prec.Policy('mixed_float16'))
 
 print('Logdir', logdir)
+Async.UID = str(uuid.uuid4().hex)
+atexit.register(Async.close_all)
 train_replay = common.Replay(logdir / 'train_replay', config.replay_size, **config.replay)
 eval_replay = common.Replay(logdir / 'eval_replay', config.time_limit or 1, **config.replay)
 eval_rand_replay = common.Replay(logdir / 'eval_rand_replay', config.time_limit or 1, **config.replay)
@@ -192,8 +194,6 @@ def per_episode(ep, mode):
   logger.write()
 
 print('Create envs.')
-Async.UID = str(uuid.uuid4().hex)
-atexit.register(Async.close_all)
 # train_envs = [make_env(config, 'train') for _ in range(config.num_envs)]
 # eval_envs = [make_env(config, 'eval') for _ in range(config.num_envs)]
 dummy_env = make_env(config, 'train')
