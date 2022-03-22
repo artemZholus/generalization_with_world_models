@@ -55,7 +55,7 @@ class WorldModel(common.Module):
     post, prior = self.rssm.observe(embed, data['action'], state, task_vector=data.get('task_vector', None))
     return post, prior
 
-  def loss(self, data, state=None):
+  def loss(self, data, state=None, full=True):
     print('calling wm loss')
     data = self.preprocess(data)
     embed = self.encoder(data)
