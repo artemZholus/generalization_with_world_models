@@ -32,6 +32,7 @@ import proposal
 import embeddings
 import elements
 import common
+from common.envs.async_env import Async
 
 configs = pathlib.Path(sys.argv[0]).parent / 'configs_addressing.yaml'
 configs = yaml.safe_load(configs.read_text())
@@ -176,18 +177,20 @@ def per_episode(ep, mode):
     #     videos.append(video[:, row: row + 1])
     #   video = np.concatenate(videos, 3)
     #   # if config.logging.wdb:
-    #   #   wandb.log({f"{mode}_segm_policy": wandb.Video(video, fps=30, format="gif")})  
+    #   #   wandb.log({f"{mode}_segm_policy": wandb.Video(video, fps=30, format="gif")})
     #   # TODO: save video to gif
   logger.write()
 
 print('Create envs.')
+Async.UID = str(uuid.uuid4().hex)
+atexit.register(Async.close_all)
 # train_envs = [make_env(config, 'train') for _ in range(config.num_envs)]
 # eval_envs = [make_env(config, 'eval') for _ in range(config.num_envs)]
 dummy_env = make_env(config, 'train')
 action_space = dummy_env.action_space['action']
 parallel = 'process' if config.parallel else 'local'
 train_driver = common.Driver(
-  partial(make_env, config, 'train'), num_envs=config.num_envs, 
+  partial(make_env, config, 'train'), num_envs=config.num_envs,
   mode=parallel, lock=config.num_envs > 1, lockfile=config.train_tasks_file,
 )
 task_vec = None
@@ -201,7 +204,7 @@ syncfile = None
 if 'metaworld' in config.task:
   syncfile = train_driver._envs[0].syncfile
 eval_driver = common.Driver(
-  partial(make_env, config, 'eval'), num_envs=config.num_envs, 
+  partial(make_env, config, 'eval'), num_envs=config.num_envs,
   mode=parallel, lock=config.num_envs > 1,
   lockfile=syncfile if config.test_tasks_file is None else config.test_tasks_file,
 )
@@ -236,11 +239,11 @@ class MyStatsSaver:
   def __init__(self):
     self.angle = None
     self.stats = defaultdict(list)
-  
+
   def on_episode(self, ep, mode='train'):
     ep_return = sum(ep['reward'])
     self.stats[self.angle].append(ep_return)
-    
+
   def dump(self, path):
     stats = {}
     stats['full'] = {k: v for k, v in self.stats.items()}

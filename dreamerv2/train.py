@@ -184,6 +184,7 @@ def per_episode(ep, mode):
   logger.write()
 
 print('Create envs.')
+Async.UID = str(uuid.uuid4().hex)
 atexit.register(Async.close_all)
 # train_envs = [make_env(config, 'train') for _ in range(config.num_envs)]
 # eval_envs = [make_env(config, 'eval') for _ in range(config.num_envs)]
