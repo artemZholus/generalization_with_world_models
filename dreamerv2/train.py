@@ -8,6 +8,7 @@ import warnings
 from functools import partial
 from copy import deepcopy as copy
 import wandb
+import uuid
 import atexit
 
 try:

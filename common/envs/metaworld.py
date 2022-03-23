@@ -356,7 +356,8 @@ class MetaWorld:
     task = metaworld.Task(env_name=task.env_name, data=task_data)
     self._env.set_task(task)
     if self.transparent:
-      self._tr_env.call('set_task', task)()
+      # self._tr_env.call('set_task', task)()
+      self._tr_env.set_task(task)
     return task
 
   def get_task_vector(self):
