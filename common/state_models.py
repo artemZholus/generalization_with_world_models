@@ -561,7 +561,7 @@ class DualReasoner(RSSM):
     self.feature_sets = [] if feature_sets is None else feature_sets
     self._cast = lambda x: tf.cast(x, prec.global_policy().compute_dtype)
     self.subj_reasoner = RSSM(**subj_kws)
-    self.condition_model = common.TwinHMMConditionModel(**cond_kws)
+    self.condition_model = common.StochConditionModel(**cond_kws)
     self.obj_reasoner = ReasonerMLP(**obj_kws)
 
   @tf.function
@@ -577,18 +577,19 @@ class DualReasoner(RSSM):
                                           current_state=current_obj,
                                           post_update=post_update_obj,
                                           sample=sample)
+    # subj inference
+    post_update_subj = emb_subj
+    post_subj, _ = self.subj_reasoner.obs_step(prev_state=prev_subj,
+                                               embed=post_update_subj,
+                                               prev_action=action,
+                                               sample=sample)
     # util inference
-    post_update_util = self.obj_reasoner.get_feat(post_obj)
+    post_update_util = tf.concat(
+      [self.obj_reasoner.get_feat(post_obj), 
+       self.subj_reasoner.get_feat(post_subj)], -1)
     post_util = self.condition_model.obs_step(prev_state=prev_util,
                                               post_update=post_update_util,
                                               sample=sample)
-    # subj inference
-    post_util_feat = self.condition_model.get_feat(post_util)
-    post_update_subj = tf.concat([post_util_feat, emb_subj], -1)
-    post_subj, _ = self.subj_reasoner.obs_step(prev_state=prev_subj, 
-                                               embed=post_update_subj, 
-                                               prev_action=action, 
-                                               sample=sample)
     return {'subj': post_subj, 'obj': post_obj, 'util': post_util}
 
   def mut_inf(self, sample, kind='obj'):
@@ -624,16 +625,15 @@ class DualReasoner(RSSM):
                                              #curr_state=subj_curr_state,
                                              sample=sample)
     # util imagination
-    prior_subj_feat = self.subj_reasoner.get_feat(prior_subj)
-    # prior_update_util = tf.stop_gradient(prior_update_util)
-    if task_vec is not None:
-      task_vec = self._cast(task_vec)
-      prior_update_util = tf.concat([prior_subj_feat, task_vec], -1)
+    prior_update_util = self.subj_reasoner.get_feat(prior_subj)
     prior_util = self.condition_model.img_step(prev_state=prev_util,
                                                prior_update=prior_update_util, 
                                                sample=sample)
     # obj imagination
-    prior_update_obj = self.condition_model.get_feat(prior_util)
+    prior_feat_obj = self.condition_model.get_feat(prior_util)
+    if task_vec is not None:
+      task_vec = self._cast(task_vec)
+      prior_update_obj = tf.concat([prior_feat_obj, task_vec], -1)
     prior_obj = self.obj_reasoner.img_step(prev_state=prev_obj,
                                            prior_update=prior_update_obj,
                                            sample=sample)

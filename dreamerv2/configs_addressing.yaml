@@ -96,9 +96,9 @@ defaults:
   feature_sets: # possible values: [subj, utility, obj, task]
     subj: [subj]
     obj: [obj]
-    policy: [subj, obj, util]
-    value: [subj, obj, util]
-    reward: [util]
+    policy: [subj, util, obj]
+    value: [obj, util]
+    reward: [util, obj]
 
   zero_shot_agent:
     enabled: False
@@ -410,7 +410,7 @@ causal:
   reward_head.layers: 3
   # cond_model_size: 32
   # cond_kws.discrete: 16
-  cond_kws.size: 200
+  cond_kws.size: 100
   cond_kws.discrete: 0
   iid_eval: False
   steps: 1e6
