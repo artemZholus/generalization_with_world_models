@@ -8,6 +8,8 @@ import sys
 import warnings
 from functools import partial
 import wandb
+import uuid
+import atexit
 
 try:
   import rich.traceback
@@ -111,13 +113,15 @@ def make_env(config, mode, **kws):
         life_done=False, sticky_actions=True, all_actions=True)
     env = common.OneHotAction(env)
   elif suite == 'metaworld':
-    if mode != 'eval':
+    if mode == 'eval':
       # in eval we freeze each worker to have a fixed env type
       if 'worker_id' in kws:
         del kws['worker_id']
     params = yaml.safe_load(config.env_params)
     params.update(kws)
-    env = common.MetaWorld(task, config.action_repeat, config.image_size, **params)
+    env = common.MetaWorld(
+      task, config.action_repeat, config.image_size, transparent=config.transparent, **params
+    )
     env.dump_tasks(str(logdir / 'tasks.pkl'))
     env = common.NormalizeAction(env)
   else:
@@ -197,7 +201,10 @@ task_vec = None
 for env in train_driver._envs:
   env.randomize_tasks = False
   if task_vec is None:
-    task_vec = env.get_task_vector()
+    if config.parallel:
+      task_vec = env.call('get_task_vector')()
+    else:
+      task_vec = env.get_task_vector()
 train_driver.on_episode(lambda ep: per_episode(ep, mode='train'))
 train_driver.on_step(lambda _: step.increment())
 syncfile = None
@@ -272,7 +279,7 @@ for angle in tqdm(range(0, 360, 5), desc=logdir.stem):
       curr_task = env.set_task_vector(curr_task_vec)
       env.set_task_set(env_name, [curr_task])
 
-  eval_driver(eval_policy, episodes=100)
+  eval_driver(eval_policy, episodes=20)
   my_saver.dump(logdir / 'stats.pkl')
 
 # while step < config.steps:
