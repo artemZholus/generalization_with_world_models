@@ -194,7 +194,7 @@ dummy_env = make_env(config, 'train')
 action_space = dummy_env.action_space['action']
 parallel = 'process' if config.parallel else 'local'
 train_driver = common.Driver(
-  partial(make_env, config, 'train'), num_envs=config.num_envs,
+  partial(make_env, config, 'train'), num_envs=2,
   mode=parallel, lock=config.num_envs > 1, lockfile=config.train_tasks_file,
 )
 task_vec = None
