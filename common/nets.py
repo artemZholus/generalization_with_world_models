@@ -89,14 +89,14 @@ class StochConditionModel(StochPostPriorNet):
     self._discrete = discrete
     self._cast = lambda x: tf.cast(x, prec.global_policy().compute_dtype)
 
-  def img_step(self, state, prior_update, sample=True):
+  def img_step(self, prev_state, prior_update, sample=True):
     x = self.forward_cond(prior_update)
     stats = self._suff_stats_layer('img', x)
     dist = self.get_dist(stats)
     condition = dist.sample() if sample else dist.mode()
     return {'stoch': condition, **stats}
   
-  def obs_step(self, state, post_update, sample=True):
+  def obs_step(self, prev_state, post_update, sample=True):
     x = self.backward_cond(post_update)
     stats = self._suff_stats_layer('obs', x)
     dist = self.get_dist(stats)
@@ -160,11 +160,11 @@ class DeterConditionModel(DeterPostPriorNet):
     self._discrete = discrete
     self._cast = lambda x: tf.cast(x, prec.global_policy().compute_dtype)
 
-  def img_step(self, state, prior_update, sample=True):
+  def img_step(self, prev_state, prior_update, sample=True):
     condition = self.forward_cond(prior_update)
     return {'deter': condition}
   
-  def obs_step(self, state, post_update, sample=True):
+  def obs_step(self, prev_state, post_update, sample=True):
     condition = self.backward_cond(post_update)
     return {'deter': condition}
 
