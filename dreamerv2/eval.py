@@ -8,6 +8,8 @@ import sys
 import warnings
 from functools import partial
 import wandb
+import uuid
+import atexit
 
 try:
   import rich.traceback
@@ -32,6 +34,7 @@ import proposal
 import embeddings
 import elements
 import common
+from common.envs.async_env import Async
 
 configs = pathlib.Path(sys.argv[0]).parent / 'configs_addressing.yaml'
 configs = yaml.safe_load(configs.read_text())
@@ -110,13 +113,15 @@ def make_env(config, mode, **kws):
         life_done=False, sticky_actions=True, all_actions=True)
     env = common.OneHotAction(env)
   elif suite == 'metaworld':
-    if mode != 'eval':
+    if mode == 'eval':
       # in eval we freeze each worker to have a fixed env type
       if 'worker_id' in kws:
         del kws['worker_id']
     params = yaml.safe_load(config.env_params)
     params.update(kws)
-    env = common.MetaWorld(task, config.action_repeat, config.image_size, **params)
+    env = common.MetaWorld(
+      task, config.action_repeat, config.image_size, transparent=config.transparent, **params
+    )
     env.dump_tasks(str(logdir / 'tasks.pkl'))
     env = common.NormalizeAction(env)
   else:
@@ -176,32 +181,37 @@ def per_episode(ep, mode):
     #     videos.append(video[:, row: row + 1])
     #   video = np.concatenate(videos, 3)
     #   # if config.logging.wdb:
-    #   #   wandb.log({f"{mode}_segm_policy": wandb.Video(video, fps=30, format="gif")})  
+    #   #   wandb.log({f"{mode}_segm_policy": wandb.Video(video, fps=30, format="gif")})
     #   # TODO: save video to gif
   logger.write()
 
 print('Create envs.')
+Async.UID = str(uuid.uuid4().hex)
+atexit.register(Async.close_all)
 # train_envs = [make_env(config, 'train') for _ in range(config.num_envs)]
 # eval_envs = [make_env(config, 'eval') for _ in range(config.num_envs)]
 dummy_env = make_env(config, 'train')
 action_space = dummy_env.action_space['action']
 parallel = 'process' if config.parallel else 'local'
 train_driver = common.Driver(
-  partial(make_env, config, 'train'), num_envs=config.num_envs, 
+  partial(make_env, config, 'train'), num_envs=2,
   mode=parallel, lock=config.num_envs > 1, lockfile=config.train_tasks_file,
 )
 task_vec = None
 for env in train_driver._envs:
   env.randomize_tasks = False
   if task_vec is None:
-    task_vec = env.get_task_vector()
+    if config.parallel:
+      task_vec = env.call('get_task_vector')()
+    else:
+      task_vec = env.get_task_vector()
 train_driver.on_episode(lambda ep: per_episode(ep, mode='train'))
 train_driver.on_step(lambda _: step.increment())
 syncfile = None
 if 'metaworld' in config.task:
   syncfile = train_driver._envs[0].syncfile
 eval_driver = common.Driver(
-  partial(make_env, config, 'eval'), num_envs=config.num_envs, 
+  partial(make_env, config, 'eval'), num_envs=config.num_envs,
   mode=parallel, lock=config.num_envs > 1,
   lockfile=syncfile if config.test_tasks_file is None else config.test_tasks_file,
 )
@@ -236,11 +246,11 @@ class MyStatsSaver:
   def __init__(self):
     self.angle = None
     self.stats = defaultdict(list)
-  
+
   def on_episode(self, ep, mode='train'):
     ep_return = sum(ep['reward'])
     self.stats[self.angle].append(ep_return)
-    
+
   def dump(self, path):
     stats = {}
     stats['full'] = {k: v for k, v in self.stats.items()}
@@ -269,7 +279,7 @@ for angle in tqdm(range(0, 360, 5), desc=logdir.stem):
       curr_task = env.set_task_vector(curr_task_vec)
       env.set_task_set(env_name, [curr_task])
 
-  eval_driver(eval_policy, episodes=100)
+  eval_driver(eval_policy, episodes=20)
   my_saver.dump(logdir / 'stats.pkl')
 
 # while step < config.steps:

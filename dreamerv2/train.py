@@ -8,6 +8,7 @@ import warnings
 from functools import partial
 from copy import deepcopy as copy
 import wandb
+import uuid
 import atexit
 
 try:
@@ -194,6 +195,8 @@ def per_episode(ep, mode):
   logger.write()
 
 print('Create envs.')
+Async.UID = str(uuid.uuid4().hex)
+atexit.register(Async.close_all)
 # train_envs = [make_env(config, 'train') for _ in range(config.num_envs)]
 # eval_envs = [make_env(config, 'eval') for _ in range(config.num_envs)]
 dummy_env = make_env(config, 'train')

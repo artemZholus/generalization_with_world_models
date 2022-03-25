@@ -88,12 +88,8 @@ class WorldModel(common.Module):
 
   def mut_inf(self, post, prior):
     metrics = {
-      'mi_q_subj': self.rssm.mut_inf(post, kind='subj'),
-      'mi_q_util': self.rssm.mut_inf(post, kind='util'),
-      'mi_q_obj': self.rssm.mut_inf(post, kind='obj'),
-      'mi_p_subj': self.rssm.mut_inf(prior, kind='subj'),
-      'mi_p_util': self.rssm.mut_inf(prior, kind='util'),
-      'mi_p_obj': self.rssm.mut_inf(prior, kind='obj'),
+      'mi_q': self.rssm.mut_inf(post),
+      'mi_p': self.rssm.mut_inf(prior)
     }
     return metrics
 
@@ -102,8 +98,10 @@ class WorldModel(common.Module):
     flatten = lambda x: x.reshape([-1] + list(x.shape[2:]))
     # start = {k: flatten(v) for k, v in start.items()}
     start = tf.nest.map_structure(flatten, start)
-    task_vec = flatten(task_vec)
-    obj_gt = flatten(obj_gt)
+    if task_vec is not None:
+      task_vec = flatten(task_vec)
+    if obj_gt is not None:
+      obj_gt = flatten(obj_gt)
     def step(prev, _):
       state, _, _, _, _ = prev
       pfeat = self.rssm.get_feat(state, key='policy', task_vec=task_vec, obj_gt=obj_gt)
@@ -139,7 +137,8 @@ class WorldModel(common.Module):
       obj_image = obj * obs['image'][..., 3:]
       input_image = tf.concat([subj_image, obj_image], axis=-1)
       obs['input_image'] = input_image
-      obs['image'] = obs['image'][..., :3]
+      # obs['image'] = obs['image'][..., :3]
+      obs['image'] = input_image
     else:
       obs['image'] = tf.cast(obs['image'][..., :3], self.dtype) / 255.0 - 0.5
     obs['reward'] = getattr(tf, self.config.clip_rewards)(obs['reward'])
@@ -353,12 +352,12 @@ class DreamerWorldModel(WorldModel):
     return model_loss, post, outs, metrics
 
   def imagine(self, policy, start, horizon, **kwargs):
-    pfeats, feats, states, actions, discount = super().imagine(policy, start, horizon, **kwargs)
+    pfeats, vfeats, rfeats, states, actions, discount = super().imagine(policy, start, horizon, **kwargs)
     flatten = lambda x: x.reshape([-1] + list(x.shape[2:]))
     start = tf.nest.map_structure(flatten, start)
     states = {k: tf.concat([
         start[k][None], v[:-1]], 0) for k, v in states.items()}
-    return pfeats, feats, states, actions, discount
+    return pfeats, vfeats, rfeats, states, actions, discount
 
 
 class CausalWorldModel(WorldModel):
@@ -412,6 +411,17 @@ class CausalWorldModel(WorldModel):
       obs['obj_image'] = tf.repeat(obj, repeats=repeats, axis=-1) * obs['image']
     return obs
 
+  def mut_inf(self, post, prior):
+    metrics = {
+      'mi_q_subj': self.rssm.mut_inf(post, kind='subj'),
+      'mi_q_util': self.rssm.mut_inf(post, kind='util'),
+      'mi_q_obj': self.rssm.mut_inf(post, kind='obj'),
+      'mi_p_subj': self.rssm.mut_inf(prior, kind='subj'),
+      'mi_p_util': self.rssm.mut_inf(prior, kind='util'),
+      'mi_p_obj': self.rssm.mut_inf(prior, kind='obj'),
+    }
+    return metrics
+
   def train(self, data, state=None, full=True):
     print('calling train wm')
     with tf.GradientTape() as model_tape:
@@ -421,7 +431,6 @@ class CausalWorldModel(WorldModel):
 
   def loss(self, data, state, full=True):
     model_loss, post, outs, metrics = super().loss(data, state, full=full)
-    #if full:
     metrics['model_subj_kl'] = outs['kl']['subj'].mean()
     metrics['model_obj_kl'] = outs['kl']['obj'].mean()
     metrics['model_util_kl'] = outs['kl']['util'].mean()

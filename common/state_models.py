@@ -78,7 +78,7 @@ class RSSM(common.StochPostPriorNet):
     prior = {k: swap(v) for k, v in prior.items()}
     return prior
 
-  def get_feat(self, state, key=None):
+  def get_feat(self, state, key=None, task_vec=None, obj_gt=None):
     stoch = self._cast(state['stoch'])
     if self._discrete:
       shape = stoch.shape[:-2] + [self._stoch * self._discrete]
@@ -98,7 +98,7 @@ class RSSM(common.StochPostPriorNet):
     return dist
 
   @tf.function
-  def obs_step(self, prev_state, prev_action, embed, sample=True, task_vec=None):
+  def obs_step(self, prev_state, prev_action, embed, task_vec=None, sample=True):
     prior = self.img_step(prev_state, prev_action, sample)
     x = tf.concat([prior['deter'], embed], -1)
     x = self.get('obs_out', tfkl.Dense, self._hidden, self._act)(x)
@@ -109,7 +109,7 @@ class RSSM(common.StochPostPriorNet):
     return post, prior
 
   @tf.function
-  def img_step(self, prev_state, prev_action, sample=True, task_vec=None):
+  def img_step(self, prev_state, prev_action, task_vec=None, sample=True):
     prev_stoch = self._cast(prev_state['stoch'])
     prev_action = self._cast(prev_action)
     if self._discrete:
