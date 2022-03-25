@@ -188,7 +188,7 @@ class MetaWorld:
     self._env = self.envs_cls[self._curr_env]
     self._tr_env = None
     if self.transparent:
-      self._tr_env = self.envs_cls[self._curr_env]
+      self._tr_env = self.tr_envs_cls[self._curr_env]
     self._tasks = self.env_tasks[self._curr_env][0]
     self.syncfile = syncfile
     print(f'sync file: {syncfile}')
@@ -357,7 +357,6 @@ class MetaWorld:
     self._env.set_task(task)
     if self.transparent:
       self._tr_env.call('set_task', task)()
-      # self._tr_env.set_task(task)
     return task
 
   def get_task_vector(self):
