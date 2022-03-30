@@ -177,7 +177,7 @@ class WorldModel(common.Module):
     video = tf.concat([truth, model, error], 2)
     B, T, H, W, C = video.shape
     video = video.transpose((1, 2, 0, 3, 4)).reshape((T, H, B * W, C))
-    return tf.concat(tf.split(video, C // 3, 3), 1)
+    return {'openl': tf.concat(tf.split(video, C // 3, 3), 1)}
 
 
 
@@ -394,7 +394,10 @@ class CausalWorldModel(WorldModel):
     obs = super().preprocess(obs)
     img_depth = 1 if self.config.grayscale else 3
     n_cams = obs['image'].shape[-1] // img_depth
-    repeats = [img_depth] * n_cams
+    if self.config.transparent:
+      repeats = [img_depth] * (n_cams // 2)
+    else:
+      repeats = [img_depth] * n_cams
     if 'task_vector' in obs:
       angle = obs['task_vector'][..., -1:]
       angle = angle / 180. * math.pi
@@ -441,8 +444,8 @@ class CausalWorldModel(WorldModel):
   @tf.function
   def video_pred(self, data):
     pred =  {
-      'subj': super().video_pred(data, img_key='subj_image')
+      'subj': super().video_pred(data, img_key='subj_image')['openl']
     }
     if not self.config.obj_features == 'gt':
-      pred['obj'] = super().video_pred(data, img_key='obj_image')
+      pred['obj'] = super().video_pred(data, img_key='obj_image')['openl']
     return pred
