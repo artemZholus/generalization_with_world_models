@@ -37,7 +37,7 @@ class StochPostPriorNet(PostPriorNet):
   def _suff_stats_layer(self, name, x):
     pass
 
-  def kl_loss(self, post, prior, forward, balance, free, free_avg):
+  def kl_loss(self, post, prior, forward, balance, free, free_avg, **kwargs):
     kld = tfd.kl_divergence
     sg = lambda x: tf.nest.map_structure(tf.stop_gradient, x)
     lhs, rhs = (prior, post) if forward else (post, prior)
