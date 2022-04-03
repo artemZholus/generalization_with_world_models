@@ -203,7 +203,7 @@ def procedural_env_ctor(mode, **kws):
   return env
 parallel = 'process' if config.parallel else 'local'
 train_driver = common.Driver(
-  partial(procedural_env_ctor, 'train'), num_envs=config.num_envs,
+  partial(procedural_env_ctor, 'train'), num_envs=2,
   mode=parallel, lock=config.num_envs > 1, lockfile=config.train_tasks_file,
 )
 train_driver.on_episode(lambda ep: per_episode(ep, mode='train'))
