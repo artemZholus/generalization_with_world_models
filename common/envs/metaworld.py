@@ -28,71 +28,71 @@ MTW_GEOMS_MAP = {
     'g_doorlockB_safe', 'g_doorlockB_box1', 'g_doorlockB_box2',
     'g_doorlockB_box3', 'g_doorlockB_box4', 'g_doorlockB_box5',
     'g_door_link1', 'handle', 'g_door_link2', 'g_door_link3',
-    'g_door_link4', 'g_dl_col1', 'g_dl_col2', 'g_dl_col3', 'g_dl_col4' 
+    'g_door_link4', 'g_dl_col1', 'g_dl_col2', 'g_dl_col3', 'g_dl_col4'
   ],
   'drawer-close': [
-    'g_drawercase_base', 'g_drawercase_col1', 'g_drawercase_col2', 
+    'g_drawercase_base', 'g_drawercase_col1', 'g_drawercase_col2',
     'g_drawercase_col3', 'g_drawercase_col4', 'g_drawercase_col5',
-    'g_drawer_beige', 'objGeom', 'g_drawer_col1', 'g_drawer_col2', 
-    'g_drawer_col3', 'g_drawer_col4', 'g_drawer_col5', 
-    'g_drawer_col6', 'g_drawer_col7', 'g_drawer_col8',  
+    'g_drawer_beige', 'objGeom', 'g_drawer_col1', 'g_drawer_col2',
+    'g_drawer_col3', 'g_drawer_col4', 'g_drawer_col5',
+    'g_drawer_col6', 'g_drawer_col7', 'g_drawer_col8',
   ],
   'drawer-open': [
-    'g_drawercase_base', 'g_drawercase_col1', 'g_drawercase_col2', 
+    'g_drawercase_base', 'g_drawercase_col1', 'g_drawercase_col2',
     'g_drawercase_col3', 'g_drawercase_col4', 'g_drawercase_col5',
-    'g_drawer_beige', 'objGeom', 'g_drawer_col1', 'g_drawer_col2', 
-    'g_drawer_col3', 'g_drawer_col4', 'g_drawer_col5', 
-    'g_drawer_col6', 'g_drawer_col7', 'g_drawer_col8',  
+    'g_drawer_beige', 'objGeom', 'g_drawer_col1', 'g_drawer_col2',
+    'g_drawer_col3', 'g_drawer_col4', 'g_drawer_col5',
+    'g_drawer_col6', 'g_drawer_col7', 'g_drawer_col8',
   ],
   'drawer-close-rotated': [
-    'g_drawercase_base', 'g_drawercase_col1', 'g_drawercase_col2', 
+    'g_drawercase_base', 'g_drawercase_col1', 'g_drawercase_col2',
     'g_drawercase_col3', 'g_drawercase_col4', 'g_drawercase_col5',
-    'g_drawer_beige', 'objGeom', 'g_drawer_col1', 'g_drawer_col2', 
-    'g_drawer_col3', 'g_drawer_col4', 'g_drawer_col5', 
-    'g_drawer_col6', 'g_drawer_col7', 'g_drawer_col8',  
+    'g_drawer_beige', 'objGeom', 'g_drawer_col1', 'g_drawer_col2',
+    'g_drawer_col3', 'g_drawer_col4', 'g_drawer_col5',
+    'g_drawer_col6', 'g_drawer_col7', 'g_drawer_col8',
   ],
   'drawer-open-rotated': [
-    'g_drawercase_base', 'g_drawercase_col1', 'g_drawercase_col2', 
+    'g_drawercase_base', 'g_drawercase_col1', 'g_drawercase_col2',
     'g_drawercase_col3', 'g_drawercase_col4', 'g_drawercase_col5',
-    'g_drawer_beige', 'objGeom', 'g_drawer_col1', 'g_drawer_col2', 
-    'g_drawer_col3', 'g_drawer_col4', 'g_drawer_col5', 
-    'g_drawer_col6', 'g_drawer_col7', 'g_drawer_col8',  
+    'g_drawer_beige', 'objGeom', 'g_drawer_col1', 'g_drawer_col2',
+    'g_drawer_col3', 'g_drawer_col4', 'g_drawer_col5',
+    'g_drawer_col6', 'g_drawer_col7', 'g_drawer_col8',
   ],
   'peg-insert-side': [
     'g_peg_block_red', 'g_peg_block_wood', 'g_peg_block_col1',
-    'g_peg_block_col2', 'g_peg_block_col3', 'g_peg_block_col4', 
+    'g_peg_block_col2', 'g_peg_block_col3', 'g_peg_block_col4',
     'g_peg_block_col5', 'g_peg_block_col6', 'g_peg_block_col7',
-    'peg',  
+    'peg',
   ],
   'window-open': [
-    'g_window_base_base', 'g_window_base_frame', 'g_window_base_col1', 
+    'g_window_base_base', 'g_window_base_frame', 'g_window_base_col1',
     'g_window_base_col2', 'g_window_base_col3', 'g_window_base_col4', 'g_window_base_col5',
-    'g_window_a_white1', 'g_window_a_white2', 'g_window_a_white3', 'g_window_a_white4', 
-    'g_window_a_white5', 'g_window_a_frame', 'g_window_a_glass', 'g_window_a_col1', 
-    'g_window_a_col2', 'g_window_a_col3', 'g_window_a_col4', 'g_window_a_col5', 
-    'g_window_a_col6', 'g_window_a_col7', 'g_window_a_col8', 'g_window_a_col9', 
+    'g_window_a_white1', 'g_window_a_white2', 'g_window_a_white3', 'g_window_a_white4',
+    'g_window_a_white5', 'g_window_a_frame', 'g_window_a_glass', 'g_window_a_col1',
+    'g_window_a_col2', 'g_window_a_col3', 'g_window_a_col4', 'g_window_a_col5',
+    'g_window_a_col6', 'g_window_a_col7', 'g_window_a_col8', 'g_window_a_col9',
     'g_window_a_col10', 'g_window_a_col11', 'g_window_b_red', 'g_window_b_glass',
-    'g_window_b_col1', 'g_window_b_col2', 'g_window_b_col3', 'g_window_b_col4', 
-    'g_window_b_col5', 'g_window_b_col6', 
+    'g_window_b_col1', 'g_window_b_col2', 'g_window_b_col3', 'g_window_b_col4',
+    'g_window_b_col5', 'g_window_b_col6',
   ],
   'window-close': [
-    'g_window_base_base', 'g_window_base_frame', 'g_window_base_col1', 
+    'g_window_base_base', 'g_window_base_frame', 'g_window_base_col1',
     'g_window_base_col2', 'g_window_base_col3', 'g_window_base_col4', 'g_window_base_col5',
-    'g_window_a_white1', 'g_window_a_white2', 'g_window_a_white3', 'g_window_a_white4', 
-    'g_window_a_white5', 'g_window_a_frame', 'g_window_a_glass', 'g_window_a_col1', 
-    'g_window_a_col2', 'g_window_a_col3', 'g_window_a_col4', 'g_window_a_col5', 
-    'g_window_a_col6', 'g_window_a_col7', 'g_window_a_col8', 'g_window_a_col9', 
+    'g_window_a_white1', 'g_window_a_white2', 'g_window_a_white3', 'g_window_a_white4',
+    'g_window_a_white5', 'g_window_a_frame', 'g_window_a_glass', 'g_window_a_col1',
+    'g_window_a_col2', 'g_window_a_col3', 'g_window_a_col4', 'g_window_a_col5',
+    'g_window_a_col6', 'g_window_a_col7', 'g_window_a_col8', 'g_window_a_col9',
     'g_window_a_col10', 'g_window_a_col11', 'g_window_b_red', 'g_window_b_glass',
-    'g_window_b_col1', 'g_window_b_col2', 'g_window_b_col3', 'g_window_b_col4', 
-    'g_window_b_col5', 'g_window_b_col6', 
+    'g_window_b_col1', 'g_window_b_col2', 'g_window_b_col3', 'g_window_b_col4',
+    'g_window_b_col5', 'g_window_b_col6',
   ],
   'reach': ['objGeom'],
   'pick-place': ['objGeom'],
   'push': ['objGeom'],
   'robot_body': [
-    'g_torso', 'g_pedestal_mesh', 'g_right_arm_base_link_mesh', 
-    'g_right_l0', 'g_head', 'g_right_l1', 'g_right_l2', 'g_right_l3', 'g_right_l4', 
-    'g_right_l5', 'g_right_l6', 'g_right_hand_mesh', 'g_right_hand_cylinder', 'rail', 
+    'g_torso', 'g_pedestal_mesh', 'g_right_arm_base_link_mesh',
+    'g_right_l0', 'g_head', 'g_right_l1', 'g_right_l2', 'g_right_l3', 'g_right_l4',
+    'g_right_l5', 'g_right_l6', 'g_right_hand_mesh', 'g_right_hand_cylinder', 'rail',
     'rightpad_geom', 'leftpad_geom'
   ]
 }
@@ -116,19 +116,19 @@ MTW_SITE_MAP = {
 class NullContext:
     def __enter__(self):
         pass
-    
+
     def __exit__(self, *args):
         pass
 
 class MetaWorld:
 
-  def __init__(self, name, action_repeat=1, size=(64, 64), 
-      randomize_env=True, randomize_tasks=False, offscreen=True, 
+  def __init__(self, name, action_repeat=1, size=(64, 64),
+      randomize_env=True, randomize_tasks=False, offscreen=True,
       cameras=None, segmentation=True, syncfile=None,
       worker_id=None, transparent=False,
     ):
     """
-    Args: 
+    Args:
       cameras: "corner, corner2, corner3, topview, gripperPOV, behindGripper"
     """
     if segmentation and not offscreen:
@@ -226,7 +226,7 @@ class MetaWorld:
         cam = intmap[cam]
       assert isinstance(cam, str)
       self._cameras.append(cam)
-  
+
   def set_tasks_generator(self, gen):
     self.tasks_generator = gen
 
@@ -257,11 +257,11 @@ class MetaWorld:
   def dump_tasks(self, path):
     with open(path, 'wb') as f:
       pickle.dump(self.env_tasks, f)
-    
+
   @property
   def unwrapped(self):
     return self._env
-  
+
   # def __getattr__(self, name):
   #   raise AttributeError(f'{type(self)} has no attr {name}!')
 
@@ -283,7 +283,7 @@ class MetaWorld:
     spaces['flat_obs'] = gym.spaces.Box(
           -np.inf, np.inf, self._env.observation_space.shape, dtype=np.float32)
     for name, size in zip([
-          'pos_hand', 'gripper_distance_apart', 'obj1_pos_quat', 'obj2_pos_quat', 
+          'pos_hand', 'gripper_distance_apart', 'obj1_pos_quat', 'obj2_pos_quat',
           'prev_step_pos_hand', 'prev_step_gripper_distance_apart', 'prev_step_obj1_pos_quat', 'prev_step_obj2_pos_quat',
           'goal_position'
         ], [3, 1, 7, 7, 3, 1, 7, 7, 3 ]):
@@ -356,8 +356,7 @@ class MetaWorld:
     task = metaworld.Task(env_name=task.env_name, data=task_data)
     self._env.set_task(task)
     if self.transparent:
-      # self._tr_env.call('set_task', task)()
-      self._tr_env.set_task(task)
+      self._tr_env.call('set_task', task)()
     return task
 
   def get_task_vector(self):
@@ -375,7 +374,7 @@ class MetaWorld:
       self._tr_env = self.tr_envs_cls[self._curr_env]
     self._tasks = self.env_tasks[self._curr_env][0]
     if self.randomize_tasks:
-      # TODO: maybe add per-event random task sync. 
+      # TODO: maybe add per-event random task sync.
       # for now this is fine.
       if self.tasks_generator is not None:
         task_vec = next(self.tasks_generator)
@@ -436,7 +435,7 @@ class MetaWorld:
     obj_mask = np.zeros(self.segm_size, dtype=np.bool)
     geom_mask = segm[..., 0] == 5
     site_mask = segm[..., 0] == 6
-    
+
     task = self.task if self.domain != 'mt10' else self._curr_env[:-len('-v2')]
 
     for geom in MTW_GEOMS_MAP[task]:
@@ -445,7 +444,7 @@ class MetaWorld:
     for geom in MTW_GEOMS_MAP['robot_body']:
       geom_id = self._env.model.geom_name2id(geom)
       subj_mask |= ( (segm[..., 1] == geom_id) * geom_mask )
-    
+
     for site in MTW_SITE_MAP[task]:
       site_id = self._env.model.site_name2id(site)
       obj_mask |= ( (segm[..., 1] == site_id) * site_mask )
@@ -453,19 +452,19 @@ class MetaWorld:
       site_id = self._env.model.site_name2id(site)
       subj_mask |= ( (segm[..., 1] == site_id) * site_mask )
 
-    # roughly: we want to marginalize lone edges that emerged due to GPU-specific 
+    # roughly: we want to marginalize lone edges that emerged due to GPU-specific
     # segmentation artifacts. This is done by convolving image w/ 3x3 avg. filter
     # and dropping elements <= 0.33 (those which occupy <= 1/3 of the window)
     conv_subj = convolve2d(subj_mask.astype(np.float32), self.ker, mode='same')
     subj_mask = conv_subj > 0.36
     conv_obj = convolve2d(obj_mask.astype(np.float32), self.ker, mode='same')
     obj_mask = conv_obj > 0.36
-    
-    subj_mask = subj_mask.reshape(self._size[0], self.segm_size[0] // self._size[0], 
+
+    subj_mask = subj_mask.reshape(self._size[0], self.segm_size[0] // self._size[0],
                                   self._size[1], self.segm_size[1] // self._size[1]
     ).mean(axis=(1, 3)) > 0.5
 
-    obj_mask = obj_mask.reshape(self._size[0], self.segm_size[0] // self._size[0], 
+    obj_mask = obj_mask.reshape(self._size[0], self.segm_size[0] // self._size[0],
                                 self._size[1], self.segm_size[1] // self._size[1]
     ).mean(axis=(1, 3)) > 0.5
 
