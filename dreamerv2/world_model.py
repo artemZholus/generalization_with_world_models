@@ -126,21 +126,39 @@ class WorldModel(common.Module):
   @tf.function
   def preprocess(self, obs):
     obs = obs.copy()
-    if self.config.transparent:
-      obs['image'] = tf.cast(obs['image'], self.dtype) / 255.0 - 0.5
-      img_depth = 1 if self.config.grayscale else 3
-      n_cams = obs['image'].shape[-1] // img_depth
-      repeats = [img_depth] * n_cams
-      subject = tf.cast(obs['segmentation'][..., :1] == 1, self.dtype)
-      obj = tf.cast(obs['segmentation'][..., 1:] == 2, self.dtype)
-      subj_image = subject * obs['image'][..., :3]
-      obj_image = obj * obs['image'][..., 3:]
+    obs['image'] = tf.cast(obs['image'], self.dtype) / 255.0 - 0.5
+    img_dim = 1 if self.config.grayscale else 3
+    if self.config.segmentation and self.config.transparent:
+      # assuming we have two identical sets of cameras for obj and subj
+      n_cams = obs['image'].shape[-1] // img_dim // 2
+      obs_total_dim = n_cams * img_dim
+      repeats = [img_dim] * n_cams
+      assert obs['image'].shape[-1] == img_dim * 2 * n_cams
+      
+      # segm[..., :n_cams] is subj_mask, segm[..., n_cams:] is obj_mask
+      # image[..., :obs_total_dim] is subj_img, image[..., obs_total_dim:] is obj_img
+      subj_img_subj_mask = tf.cast(obs['segmentation'][..., :n_cams] == 1, self.dtype)
+      obj_img_obj_mask = tf.cast(obs['segmentation'][..., n_cams:] == 2, self.dtype)
+      subj_image = tf.repeat(subj_img_subj_mask, repeats=repeats, axis=-1) * obs['image'][..., :obs_total_dim]
+      obj_image = tf.repeat(obj_img_obj_mask, repeats=repeats, axis=-1) * obs['image'][..., obs_total_dim:]
       input_image = tf.concat([subj_image, obj_image], axis=-1)
       obs['input_image'] = input_image
-      # obs['image'] = obs['image'][..., :3]
       obs['image'] = input_image
-    else:
-      obs['image'] = tf.cast(obs['image'][..., :3], self.dtype) / 255.0 - 0.5
+    if self.config.segmentation and not self.config.transparent:
+      # one set of cameras for both obj and subj
+      n_cams = obs['image'].shape[-1] // img_dim
+      repeats = [img_dim] * n_cams
+      assert obs['image'].shape[-1] == img_dim * n_cams
+
+      # segm[..., :n_cams] is subj_mask, segm[..., n_cams:] is obj_mask
+      subj_mask = tf.cast(obs['segmentation'] == 1, self.dtype)
+      obj_mask = tf.cast(obs['segmentation'] == 2, self.dtype)
+      subj_image = tf.repeat(subj_mask, repeats=repeats, axis=-1) * obs['image']
+      obj_image = tf.repeat(obj_mask, repeats=repeats, axis=-1) * obs['image']
+      input_image = tf.concat([subj_image, obj_image], axis=-1)
+      obs['input_image'] = input_image
+      obs['image'] = input_image
+
     obs['reward'] = getattr(tf, self.config.clip_rewards)(obs['reward'])
     if 'discount' in obs:
       obs['discount'] *= self.config.discount
@@ -388,30 +406,18 @@ class CausalWorldModel(WorldModel):
     ]
 
   def preprocess(self, obs):
-    img = obs['image']
-    img = tf.cast(img, self.dtype) / 255.0 - 0.5
     obs = super().preprocess(obs)
-    img_depth = 1 if self.config.grayscale else 3
-    n_cams = obs['image'].shape[-1] // img_depth
-    if self.config.transparent:
-      repeats = [img_depth] * (n_cams // 2)
-    else:
-      repeats = [img_depth] * n_cams
+    if self.config.segmentation:
+      obs_dim = obs['image'].shape[-1] // 2
+      # obs['image'] is already preprocessed and with segmentation in case of transparent env,
+      # so we only need to take slices
+      obs['subj_image'] = obs['image'][..., :obs_dim]
+      obs['obj_image'] = obs['image'][..., obs_dim:]
     if 'task_vector' in obs:
       angle = obs['task_vector'][..., -1:]
       angle = angle / 180. * math.pi
       angle -= math.pi
       obs['task_vector'] = tf.concat([obs['task_vector'][..., :-1], angle], -1)
-    if self.config.transparent:
-      subject = tf.cast(obs['segmentation'][..., :1] == 1, self.dtype)
-      obj = tf.cast(obs['segmentation'][..., 1:] == 2, self.dtype)
-      obs['subj_image'] = tf.repeat(subject, repeats=repeats, axis=-1) * img[..., :3]
-      obs['obj_image'] = tf.repeat(obj, repeats=repeats, axis=-1) * img[..., 3:]
-    else:
-      subject = tf.cast(obs['segmentation'] == 1, self.dtype)
-      obj = tf.cast(obs['segmentation'] == 2, self.dtype)
-      obs['subj_image'] = tf.repeat(subject, repeats=repeats, axis=-1) * obs['image']
-      obs['obj_image'] = tf.repeat(obj, repeats=repeats, axis=-1) * obs['image']
     return obs
 
   def mut_inf(self, post, prior):

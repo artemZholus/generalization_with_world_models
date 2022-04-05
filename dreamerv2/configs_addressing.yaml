@@ -47,6 +47,7 @@ defaults:
   world_model: dreamer
   pred_discount: True
   zero_shot: False
+  segmentation: False
   transparent: False
   split_decoder: False
   train_wm_only: False
@@ -347,7 +348,7 @@ ml1:
 rotated_drawer_close:
   logging.exp_name: ml1_rotated
   img_channels: 3
-  env_params: "{cameras: [topview], offscreen: True, randomize_tasks: True}"
+  env_params: "{cameras: [topview], offscreen: True, randomize_tasks: True, segmentation: True}"
   eval_eps: 10
   num_envs: 10
   parallel: true
@@ -389,6 +390,7 @@ close_full:
   test_tasks_file: ./rotated_drawer_tasks/close_full_test
 
 causal:
+  segmentation: True
   transparent: True
   obj_features: 'img'
   grad_heads: [obj_image, subj_image, reward]
