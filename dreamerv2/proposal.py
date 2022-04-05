@@ -50,6 +50,8 @@ def merge(d1,d2):
 class EvalTrainer(TrainProposal):
   def __init__(self, config, agnt, step, dataset, eval_ds):
     super().__init__(config, agnt, step, dataset)
+    self.train_ac_eval = config.train_ac_eval
+    self.train_wm_eval = config.train_wm_eval
     self.batch = None
     self.eval_dataset = eval_ds
     self.step = tf.Variable(0, dtype=tf.int64)
@@ -62,7 +64,8 @@ class EvalTrainer(TrainProposal):
       return batch, do_wm_step, do_ac_step, True
     else:
       batch = next(self.eval_dataset)
-      do_wm_step, do_ac_step = not self.train_ac_only, False
+      do_wm_step = not self.train_ac_only and self.train_wm_eval
+      do_ac_step = not self.train_wm_only and self.train_ac_eval
       return batch, do_wm_step, do_ac_step, True
 
 
