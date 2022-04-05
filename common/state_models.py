@@ -12,7 +12,7 @@ class RSSM(common.StochPostPriorNet, common.DeterPostPriorNet):
 
   def __init__(
       self, stoch=30, deter=200, hidden=200, discrete=False, act=tf.nn.elu,
-      std_act='softplus', min_std=0.1):
+      std_act='softplus', min_std=0.1, init_gru=True):
     super().__init__()
     self._stoch = stoch
     self._deter = deter
@@ -21,7 +21,10 @@ class RSSM(common.StochPostPriorNet, common.DeterPostPriorNet):
     self._act = getattr(tf.nn, act) if isinstance(act, str) else act
     self._std_act = std_act
     self._min_std = min_std
-    self._cell = common.GRUCell(self._deter, norm=True)
+    if init_gru:
+      self._cell = common.GRUCell(self._deter, norm=True)
+    else:
+      self._cell = None
     self._cast = lambda x: tf.cast(x, prec.global_policy().compute_dtype)
 
   def mut_inf(self, sample):
@@ -272,7 +275,7 @@ class ReasonerMLP(RSSM):
       self, stoch=30, deter=200, hidden=200, discrete=False, act=tf.nn.elu,
       std_act='softplus', min_std=0.1
     ):
-    super().__init__()
+    super().__init__(init_gru=False)
     self._stoch = stoch
     self._deter = deter
     self._hidden = hidden
@@ -280,7 +283,7 @@ class ReasonerMLP(RSSM):
     self._act = getattr(tf.nn, act) if isinstance(act, str) else act
     self._std_act = std_act
     self._min_std = min_std
-    self._cell = common.GRUCell(self._deter, norm=True)
+    # self._cell = common.GRUCell(self._deter, norm=True)
     self._stoch_features = True
     self._cast = lambda x: tf.cast(x, prec.global_policy().compute_dtype)
 
@@ -290,14 +293,14 @@ class ReasonerMLP(RSSM):
       state = dict(
           logit=tf.zeros([batch_size, self._stoch, self._discrete], dtype),
           stoch=tf.zeros([batch_size, self._stoch, self._discrete], dtype),
-          deter=self._cell.get_initial_state(None, batch_size, dtype),
+          # deter=self._cell.get_initial_state(None, batch_size, dtype),
           out=tf.zeros([batch_size, self._hidden], dtype))
     else:
       state = dict(
           mean=tf.zeros([batch_size, self._stoch], dtype),
           std=tf.zeros([batch_size, self._stoch], dtype),
           stoch=tf.zeros([batch_size, self._stoch], dtype),
-          deter=self._cell.get_initial_state(None, batch_size, dtype),
+          # deter=self._cell.get_initial_state(None, batch_size, dtype),
           out=tf.zeros([batch_size, self._hidden], dtype))
     return state
 
@@ -346,11 +349,12 @@ class ReasonerMLP(RSSM):
     if self._discrete:
       shape = prev_stoch.shape[:-2] + [self._stoch * self._discrete]
       prev_stoch = tf.reshape(prev_stoch, shape)
-    x = tf.concat([prev_stoch, prior_update], -1)
+    # x = tf.concat([prev_stoch, prior_update], -1)
+    x = prior_update
     x = self.get('img_in', tfkl.Dense, self._hidden, self._act)(x)
     deter = prev_state['deter']
-    x, deter = self._cell(x, [deter])
-    deter = deter[0]  # Keras wraps the state in a list.
+    # x, deter = self._cell(x, [deter])
+    # deter = deter[0]  # Keras wraps the state in a list.
     x = self.get('img_out', tfkl.Dense, self._hidden, self._act)(x)
     stats = self._suff_stats_layer('img_dist', x)
     dist = self.get_dist(stats)
@@ -519,7 +523,6 @@ class Reasoner2Rnn(RSSM):
       return tf.concat([stoch, state['curr_state_post']['deter']], -1)
     elif 'curr_state_prio' in state:
       return tf.concat([stoch, state['curr_state_prio']['deter']], -1)
-
 
 class DualReasoner(RSSM):
   def __init__(
