@@ -113,7 +113,8 @@ class Agent(common.Module):
         angle = data['task_vector'][..., -1:]
         angle = angle / 180. * math.pi
         angle -= math.pi
-        task_vector = tf.concat([data['task_vector'][..., :-1], angle], -1)
+        task_sin, task_cos = tf.math.sin(angle), tf.math.cos(angle)
+        task_vector = tf.concat([data['task_vector'][..., :-1], task_sin, task_cos], -1)
       else:
         task_vector = None
       if 'obj_gt' in data:

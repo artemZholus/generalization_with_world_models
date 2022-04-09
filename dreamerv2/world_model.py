@@ -417,7 +417,8 @@ class CausalWorldModel(WorldModel):
       angle = obs['task_vector'][..., -1:]
       angle = angle / 180. * math.pi
       angle -= math.pi
-      obs['task_vector'] = tf.concat([obs['task_vector'][..., :-1], angle], -1)
+      task_sin, task_cos = tf.math.sin(angle), tf.math.cos(angle)
+      obs['task_vector'] = tf.concat([obs['task_vector'][..., :-1], task_sin, task_cos], -1)
     return obs
 
   def mut_inf(self, post, prior):
