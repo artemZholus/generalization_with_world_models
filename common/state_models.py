@@ -336,7 +336,9 @@ class ReasonerMLP(RSSM):
     stats = self._suff_stats_layer('obs_dist', x)
     dist = self.get_dist(stats)
     stoch = dist.sample() if sample else dist.mode()
-    latent = {'stoch': stoch, 'deter': current_state['deter'], 'out': x, **stats}
+    latent = {'stoch': stoch, 
+              # 'deter': current_state['deter'], 
+              'out': x, **stats}
     return latent
 
   @tf.function
@@ -352,14 +354,16 @@ class ReasonerMLP(RSSM):
     # x = tf.concat([prev_stoch, prior_update], -1)
     x = prior_update
     x = self.get('img_in', tfkl.Dense, self._hidden, self._act)(x)
-    deter = prev_state['deter']
+    # deter = prev_state['deter']
     # x, deter = self._cell(x, [deter])
     # deter = deter[0]  # Keras wraps the state in a list.
     x = self.get('img_out', tfkl.Dense, self._hidden, self._act)(x)
     stats = self._suff_stats_layer('img_dist', x)
     dist = self.get_dist(stats)
     stoch = dist.sample() if sample else dist.mode()
-    latent = {'stoch': stoch, 'deter': deter, 'out': x, **stats}
+    latent = {'stoch': stoch, 
+              # 'deter': deter, 
+              'out': x, **stats}
     return latent
 
   def get_feat(self, state):
