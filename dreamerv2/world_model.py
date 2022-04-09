@@ -402,7 +402,9 @@ class CausalWorldModel(WorldModel):
       angle = obs['task_vector'][..., -1:]
       angle = angle / 180. * math.pi
       angle -= math.pi
-      obs['task_vector'] = tf.concat([obs['task_vector'][..., :-1], angle], -1)
+      cos = tf.math.cos(angle)
+      sin = tf.math.sin(angle)
+      obs['task_vector'] = tf.concat([cos, sin], -1)
     if self.config.transparent:
       subject = tf.cast(obs['segmentation'][..., :1] == 1, self.dtype)
       obj = tf.cast(obs['segmentation'][..., 1:] == 2, self.dtype)
