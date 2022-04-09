@@ -373,7 +373,7 @@ class CausalWorldModel(WorldModel):
     self.heads['subj_image'] = common.ConvDecoder(shape, **config.decoder)
 
     if config.obj_features == 'gt':
-      self.heads['obj_gt'] = common.MLP((8,), **config.obj_gt_head)
+      self.heads['obj_gt'] = common.MLP((9,), **config.obj_gt_head)
     if config.obj_features == 'img':
       self.heads['obj_image'] = common.ConvDecoder(shape, **config.decoder)
     if config.obj_features == 'mixed':
