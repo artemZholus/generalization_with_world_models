@@ -32,7 +32,6 @@ from tqdm import tqdm
 
 import agent
 import proposal
-import embeddings
 import elements
 import common
 from common.envs.async_env import Async
@@ -84,15 +83,18 @@ if config.precision == 16:
 print('Logdir', logdir)
 Async.UID = str(uuid.uuid4().hex)
 atexit.register(Async.close_all)
-train_replay = common.Replay(logdir / 'train_replay', config.replay_size, **config.replay)
-eval_replay = common.Replay(logdir / 'eval_replay', config.time_limit or 1, **config.replay)
-eval_rand_replay = common.Replay(logdir / 'eval_rand_replay', config.time_limit or 1, **config.replay)
-if config.multitask.mode != 'none':
+
+replays = dict()
+replays["train"] = common.Replay(logdir / 'train_replay', config.replay_size, **config.replay)
+replays["eval"] = common.Replay(logdir / 'eval_replay', config.time_limit or 1, **config.replay)
+tronev = config.train_wm_eval or config.train_ac_eval
+if config.multitask.mode == 'tronev':
+  replays["eval_rand"] = common.Replay(logdir / 'eval_rand_replay', config.time_limit or 1, **config.replay)
+if (config.multitask.mode != 'none') and (config.multitask.mode != 'tronev'):
   mt_path = pathlib.Path(config.multitask.data_path).expanduser()
-  mt_replay = common.Replay(mt_path, load=config.keep_ram, **config.replay)
-else:
-  mt_replay = None
-step = elements.Counter(train_replay.total_steps)
+  replays["mt"] = common.Replay(mt_path, load=config.keep_ram, **config.replay)
+
+step = elements.Counter(replays["train"].total_steps)
 outputs = [
     elements.TerminalOutput(),
     elements.JSONLOutput(logdir),
@@ -144,17 +146,12 @@ def per_episode(ep, mode):
     task_name = ep['task_name'][0]
   score = float(ep['reward'].astype(np.float64).sum())
   print(f'{mode.title()} episode has {length} steps and return {score:.1f}.')
-  if mode == 'train':
-    replay_ = train_replay
-  elif mode == 'rand_eval':
-    replay_ = eval_rand_replay
-  else:
-    replay_ = eval_replay
+  replay_ = replays[mode]
   # replay_ = dict(train=train_replay, eval=eval_replay)[mode if 'eval' not in mode else 'eval']
   ep_file = replay_.add(ep)
   if mode == 'train' and config.multitask.bootstrap:
     # mt_replay.add(ep)
-    mt_replay._episodes[str(ep_file)] = ep
+    replays["mt"]._episodes[str(ep_file)] = ep
   logger.scalar(f'{mode}_transitions', replay_.num_transitions)
   logger.scalar(f'{mode}_return', score)
   logger.scalar(f'{mode}_length', length)
@@ -165,8 +162,8 @@ def per_episode(ep, mode):
     prefix = f'{prefix}_{task_name}'
   summ = {
     f'{config.logging.env_name}/{prefix}_return': score,
-    f'train_env_step': train_replay.num_transitions,
-    f'eval_env_step': eval_replay.num_transitions,
+    f'train_env_step': replays["train"].num_transitions,
+    f'eval_env_step': replays["eval"].num_transitions,
     f'{config.logging.env_name}/{prefix}_length': length
   }
   if config.logging.wdb:
@@ -297,15 +294,16 @@ def ev_per_ep(ep, mode='eval'):
     per_episode(ep, mode='rand_eval')
 eval_driver.on_episode(ev_per_ep)
 
-prefill = max(0, config.prefill - train_replay.total_steps)
+prefill = max(0, config.prefill - replays["train"].total_steps)
 random_agent = common.RandomAgent(action_space)
 if prefill:
   print(f'Prefill dataset ({prefill} steps).')
   train_driver(random_agent, steps=prefill, episodes=1)
   eval_driver(random_agent, episodes=1)
-  kind = 'random'
-  eval_driver(random_agent, episodes=1)
-  kind = 'policy'
+  if config.multitask.mode == 'tronev':
+    kind = 'random'
+    eval_driver(random_agent, episodes=1)
+    kind = 'policy'
   train_driver.reset()
   eval_driver.reset()
   if config.iid_eval:
@@ -313,33 +311,18 @@ if prefill:
     iid_eval_driver.reset()
 
 print('Create agent.')
-train_dataset = iter(train_replay.dataset(**config.dataset))
-train_rand_dataset = iter(eval_rand_replay.dataset(**config.dataset))
-eval_dataset = iter(eval_replay.dataset(**config.dataset))
-if config.embeddings.trainer.mode == 'sa_dyne':
-  path = pathlib.Path(config.embeddings.data_path).expanduser()
-  dyne_dataset = iter(common.Replay(path).dataset(length=config.embeddings.traj_len,
-                                                  sequential=True,
-                                                  **config.embeddings.dataset
-                                                  ))
-  dyne_encoder = embeddings.SADyneEncoder(config.embeddings.dyne,
-                                          config.embeddings.traj_len,
-                                          action_space)
-  trainer = embeddings.DyneTrainer(config.embeddings.trainer, dyne_encoder)
-  for i in range(config.embeddings.trainer.training_steps):
-    mets = trainer.train(next(dyne_dataset))
-    if i % config.embeddings.trainer.log_every == 0:
-      mets['dyne_step'] = i
-      if config.logging.wdb:
-        wandb.log(mets)
-  del dyne_dataset
+train_dataset = iter(replays["train"].dataset(**config.dataset))
+eval_dataset = iter(replays["eval"].dataset(**config.dataset))
+if tronev:
+  train_rand_dataset = iter(replays["eval_rand"].dataset(**config.dataset))
 
 agnt = agent.Agent(config, logger, action_space, step, train_dataset)
 if 'multitask' not in config or config.multitask.mode == 'none':
+  batch_proposal = proposal.TrainProposal(config, agnt, step, train_dataset)
+elif config.multitask.mode == 'tronev':
   batch_proposal = proposal.EvalTrainer(config, agnt, step, train_dataset, train_rand_dataset)
-  # batch_proposal = proposal.TrainProposal(config, agnt, step, train_dataset)
 elif config.multitask.mode == 'raw':
-  batch_proposal = proposal.RawMultitask(config, agnt, step, train_dataset, mt_replay)
+  batch_proposal = proposal.RawMultitask(config, agnt, step, train_dataset, replays["mt"])
 print('Agent created')
 if (logdir / 'variables.pkl').exists() or config.agent_path != 'none' or config.wm_path != 'none' or config.ac_path != 'none':
   if config.wm_path != 'none':
@@ -364,7 +347,7 @@ def train_step(tran):
       [metrics[key].append(value) for key, value in mets.items()]
   if should_log(step):
     average = {f'agent/{k}': np.array(v, np.float64).mean() for k, v in metrics.items()}
-    average['env_step'] = train_replay.num_transitions
+    average['env_step'] = replays["train"].num_transitions
     if config.logging.wdb:
       wandb.log(average)
     print('\n'.join(batch_proposal.timed.summarize()))
@@ -394,9 +377,10 @@ while step < config.steps:
       wandb.log({f"eval_openl": wandb.Video(video, fps=30, format="gif")})
   eval_policy = functools.partial(agnt.policy, mode='eval')
   eval_driver(eval_policy, episodes=config.eval_eps)
-  kind = 'random'
-  eval_driver(random_agent, episodes=config.eval_eps)
-  kind = 'policy'
+  if config.multitask.mode == 'tronev':
+    kind = 'random'
+    eval_driver(random_agent, episodes=config.eval_eps)
+    kind = 'policy'
   if config.iid_eval:
     iid_eval_driver(eval_policy, episodes=config.eval_eps)
   print('Start training.')

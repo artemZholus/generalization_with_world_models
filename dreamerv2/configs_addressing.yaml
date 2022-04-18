@@ -96,7 +96,7 @@ defaults:
   slow_target_update: 100
   slow_target_fraction: 1
 
-  feature_sets: # possible values: [subj, utility, obj, task]
+  feature_sets: # possible values: [subj, util, obj, task]
     subj: [subj]
     obj: [obj]
     policy: [subj, obj, util]
@@ -115,43 +115,6 @@ defaults:
     bootstrap: False
     multitask_probability: .0
     multitask_batch_fraction: .0
-  addressing: 
-    kind: none
-    hidden: 200
-    optimizer: {opt: adam, lr: 1e-4, eps: 1e-5, clip: 100, wd: 1e-6}
-    separate_enc_for_addr: True
-    detach_cnn: False
-    agent_only: False
-    detach_task_embedding: False
-    detach_multitask_embedding: False
-    num_train_multitask_batches: 2
-    num_query_multitask_batches: 2
-    query_full_memory: True
-    query: {layers: 0, units: 300, act: elu}
-    key: {layers: 0, units: 300, act: elu}
-    temp: 10.
-    recalc_latent_freq: 200
-
-  # Dyne
-  embeddings:
-    data_path: none
-    traj_len: 4
-    dataset: {batch: 128, oversample_ends: True}
-    dyne:
-      act_embed_size: 6
-      obs_embed_size: 100
-      action_net: {layers: 2, units: 400, act: selu, dist: logvar_normal}  
-      obs_net_encoder: {depth: 48, act: elu, kernels: [4, 4, 4, 4], keys: [image], rect: False}
-      obs_net_dist: {layers: 0, units: 400, act: relu, dist: logvar_normal}
-      recon_net: {layers: 2, units: 400, act: relu, dist: normal}
-      image_net: {shape: [64, 64, 3], depth: 48, act: elu, kernels: [5, 5, 6, 6]}
-    trainer:
-      mode: none
-      training_steps: 10000
-      log_every: 10
-      dyne_opt: {opt: adam, lr: 3e-4, eps: 1e-5, clip: 100, wd: 1e-6}
-      action_kld_scale: 1e-2
-      state_kld_scale: 1e-2
 
   # Exploration
   expl_extr_scale: 0.0
@@ -190,7 +153,6 @@ dual_v1:
   obj_encoder: {depth: 32, act: relu, kernels: [4, 4, 4, 4], keys: [obj_image], rect: False}
   obj_rssm: {hidden: 200, deter: 200, stoch: 30, discrete: False, act: elu, std_act: sigmoid2, min_std: 0.1}
 
-
 v1:
   train_every: 1000
   train_steps: 100
@@ -216,42 +178,6 @@ v1:
 
   slow_target: False
 
-addressing:
-  multitask: 
-    data_path: '$DATA/expert_buff/w_walk_600r_1000e/episodes'
-    dataset: {batch: 51, length: 50, oversample_ends: True}
-    mode: addressing
-    bootstrap: False
-    multitask_probability: 0.5 # expert_batch_prop
-    multitask_batch_fraction: 0.5
-  addressing:
-    kind: reinforce_pred
-    hidden: 200
-    optimizer: {opt: adam, lr: 1e-4, eps: 1e-5, clip: 100, wd: 1e-6}
-    separate_enc_for_addr: True
-    detach_cnn: False
-    agent_only: False
-    detach_task_embedding: True
-    detach_multitask_embedding: False
-    num_train_multitask_batches: 2 # number of multitask batches for training addressing
-    num_query_multitask_batches: 2 # number of multitask batches to select from during training of the dreamer
-    query_full_memory: False # whether to address over the full multitask memory 
-                             # (equals to num_query_multitask_batches * multitask.dataset.length == total multitask transitions)
-    temp: 50. # for same task experiment 50 was used; for multitask, it was 10
-    recalc_latent_freq: 400
-
-exp_w_stand:
-  multitask: 
-    data_path: '$DATA/multitask_buff/w_stand_1000e/episodes'
-
-exp_w_walk:
-  multitask: 
-    data_path: '$DATA/multitask_buff/w_walk_600r_1000e/episodes'
-
-exp_w_run:
-  multitask: 
-    data_path: '$DATA/multitask_buff/w_run_500r_1000e/episodes'
-
 raw_multitask:
   multitask: 
     data_path: '$DATA/multitask_buff/w_walk_600r_1000e/episodes'
@@ -260,34 +186,15 @@ raw_multitask:
     multitask_probability: 0.5 # expert_batch_prop
     multitask_batch_fraction: 0.5
 
-dyne_v1:
-  dataset: {batch: 50, length: 52, oversample_ends: True}
-  embeddings:
-    data_path: '/data/expert_buff/w_walk_1000e/episodes'
-    traj_len: 4
-    dataset: {batch: 128, oversample_ends: True}
-    dyne:
-      act_embed_size: 6
-      obs_embed_size: 100
-      action_net: {layers: 2, units: 400, act: selu, dist: logvar_normal}  
-      obs_net_encoder: {depth: 32, act: relu, kernels: [4, 4, 4, 4], keys: [image], rect: False}
-      obs_net_dist: {layers: 0, units: 400, act: relu, dist: logvar_normal}
-      recon_net: {layers: 2, units: 400, act: relu, dist: normal}
-      image_net: {shape: [64, 64, 6], depth: 32, act: relu, kernels: [5, 5, 6, 6]}
-    trainer:
-      mode: sa_dyne
-      training_steps: 10000
-      log_every: 10
-      action_kld_scale: 1e-2
-      state_kld_scale: 1e-2
-  multitask:
-    data_path: '/data/expert_buff/w_walk_1000e/episodes'
-    mode: addressing_dyne
-    dataset: {batch: 50, length: 52, oversample_ends: True}
-  addressing:
-    detach_cnn: True
-    separate_enc_for_addr: True
+sin_features:
+  env_params: "{cameras: [topview], offscreen: True, randomize_tasks: True, segmentation: True, gt_features: sin, task_features: sin}"
 
+train_on_eval:
+  multitask:
+    mode: 'tronev'
+    bootstrap: false
+  train_wm_eval: True 
+  train_ac_eval: True
 
 atari:
 
@@ -454,18 +361,6 @@ dmc:
   actor_grad: dynamics
   kl.free: 1.0
   dataset.oversample_ends: False
-
-dmc_walker:
-  logging.exp_name: walker_domain
-  logging.env_name: run
-  task: dmc_walker_run
-  logdir: $DATA/tmp_noroot/{run_id}
-
-dmc_hopper:
-  logging.exp_name: hopper_domain
-  logging.env_name: hop
-  task: dmc_hopper_hop
-  logdir: $DATA/tmp_noroot/{run_id}
 
 debug:
 

@@ -125,7 +125,8 @@ class MetaWorld:
   def __init__(self, name, action_repeat=1, size=(64, 64), 
       randomize_env=True, randomize_tasks=False, offscreen=True, 
       cameras=None, segmentation=True, syncfile=None,
-      worker_id=None, transparent=False,
+      worker_id=None, transparent=False, 
+      task_features='rad', gt_features='xy',
     ):
     """
     Args: 
@@ -154,6 +155,8 @@ class MetaWorld:
     self.tr_envs_cls = {}
     self.tasks_generator = None
     self.transparent = transparent
+    self.task_features = task_features
+    self.gt_features = gt_features
     if domain == 'mt10':
       dom = metaworld.MT10()
     elif domain == 'ml1':
@@ -230,16 +233,6 @@ class MetaWorld:
   def set_tasks_generator(self, gen):
     self.tasks_generator = gen
 
-  def load_tasks(self, path):
-    with open(path, 'rb') as f:
-      tasks = pickle.load(f)
-    self.env_tasks = tasks
-    for name, env in self.envs_cls.items():
-      task = self.env_tasks[name][0][self.env_tasks[name][1]]
-      env.set_task(task)
-      if self.transparent:
-        self.tr_envs_cls[name].call('set_task', task)()
-
   def create_tasks(self, params):
     new_taskset = defaultdict(list)
     for name, env in self.envs_cls.items():
@@ -253,18 +246,24 @@ class MetaWorld:
       self.env_tasks[name] = (new_taskset[name], 0)
     self.dump_tasks(f'{self.syncfile}_iid_eval.data')
     self.load_tasks(f'{self.syncfile}_iid_eval.data')
+  
+  def load_tasks(self, path):
+    with open(path, 'rb') as f:
+      tasks = pickle.load(f)
+    self.env_tasks = tasks
+    for name, env in self.envs_cls.items():
+      task = self.env_tasks[name][0][self.env_tasks[name][1]]
+      env.set_task(task)
+      if self.transparent:
+        self.tr_envs_cls[name].call('set_task', task)()
 
   def dump_tasks(self, path):
     with open(path, 'wb') as f:
       pickle.dump(self.env_tasks, f)
-    
-  @property
-  def unwrapped(self):
-    return self._env
-  
-  # def __getattr__(self, name):
-  #   raise AttributeError(f'{type(self)} has no attr {name}!')
 
+  def get_task_set(self, env_name):
+    return self.env_tasks[env_name]
+  
   def set_task_set(self, env_name, task_set):
     self.env_tasks[env_name] = (task_set, 0)
     self.task_id[env_name] = 0
@@ -274,8 +273,21 @@ class MetaWorld:
     if env_name == self._curr_env:
       self._tasks = self.env_tasks[self._curr_env][0]
 
-  def get_task_set(self, env_name):
-    return self.env_tasks[env_name]
+  def get_task_vector(self):
+    task_id = self.task_id[self._curr_env]
+    return pickle.loads(self._tasks[task_id].data)['rand_vec']
+  
+  def set_task_vector(self, vec):
+    task_id = self.task_id[self._curr_env]
+    task = copy(self._tasks[task_id])
+    task_data = pickle.loads(task.data)
+    task_data['rand_vec'] = vec
+    task_data = pickle.dumps(task_data)
+    task = metaworld.Task(env_name=task.env_name, data=task_data)
+    self._env.set_task(task)
+    if self.transparent:
+      self._tr_env.call('set_task', task)()
+    return task
 
   @property
   def observation_space(self):
@@ -298,34 +310,13 @@ class MetaWorld:
     spec = self._env.action_space
     action = gym.spaces.Box(spec.low, spec.high, dtype=np.float32)
     return gym.spaces.Dict({'action': action})
-
-  def parse_obs(self, obs_vec):
-    obs = {'flat_obs': obs_vec}
-    obs['pos_hand'] = obs_vec[:3]
-    obs['gripper_distance_apart'] = obs_vec[3]
-    obs['obj1_pos_quat'] = obs_vec[4:11]
-    obs['obj2_pos_quat'] = obs_vec[11:18]
-    obs['prev_step_pos_hand'] = obs_vec[18:21]
-    obs['prev_step_gripper_distance_apart'] = obs_vec[21]
-    obs['prev_step_obj1_pos_quat'] = obs_vec[22:29]
-    obs['prev_step_obj2_pos_quat'] = obs_vec[29:36]
-    obs['goal_position'] = obs_vec[36:39]
-    obs['task_vector'] = self.unwrapped._last_rand_vec.copy()
-    return obs
-
-  def get_gt_objective(self, obs):
-    handle_target_xy = obs["obj1_pos_quat"][:2] - self.unwrapped._target_pos[:2]
-    handle_target_dist = np.linalg.norm(obs["obj1_pos_quat"][:2] - self.unwrapped._target_pos[:2])
-    h_t_sin, h_t_cos = handle_target_xy[0]/handle_target_dist, handle_target_xy[1]/handle_target_dist
-    drawer_xy = copy(self._env.sim.model.body_pos[self._env.model.body_name2id('drawer')][:2])
-    handle_xy = copy(obs["obj1_pos_quat"][:2])
-    task_angle = obs['task_vector'][-1] * ( math.pi/180. ) - math.pi
-    task_sin = np.sin(task_angle)
-    task_cos = np.cos(task_angle)
     
-    return np.hstack((handle_target_dist, h_t_sin, h_t_cos,
-                      drawer_xy, handle_xy,
-                      task_sin, task_cos))
+  @property
+  def unwrapped(self):
+    return self._env
+  
+  # def __getattr__(self, name):
+  #   raise AttributeError(f'{type(self)} has no attr {name}!')
 
   def step(self, action):
     action = action['action']
@@ -341,6 +332,7 @@ class MetaWorld:
       if done:
         break
     obs = self.parse_obs(obs_vec)
+    obs['task_vector'] = self.get_task_features(obs)
     obs['obj_gt'] = self.get_gt_objective(obs)
 
     # TODO: transparent here
@@ -351,22 +343,6 @@ class MetaWorld:
     info['discount'] = np.array(1. if not done else 0., np.float32)
     obs['task_name'] = self._curr_env
     return obs, reward, done, info
-
-  def set_task_vector(self, vec):
-    task_id = self.task_id[self._curr_env]
-    task = copy(self._tasks[task_id])
-    task_data = pickle.loads(task.data)
-    task_data['rand_vec'] = vec
-    task_data = pickle.dumps(task_data)
-    task = metaworld.Task(env_name=task.env_name, data=task_data)
-    self._env.set_task(task)
-    if self.transparent:
-      self._tr_env.call('set_task', task)()
-    return task
-
-  def get_task_vector(self):
-    task_id = self.task_id[self._curr_env]
-    return pickle.loads(self._tasks[task_id].data)['rand_vec']
 
   def reset(self):
     if self.randomize_env:
@@ -394,13 +370,60 @@ class MetaWorld:
     if self.transparent:
       tr_position = self._tr_env.call('reset')()
     obs = self.parse_obs(position)
+    obs['task_vector'] = self.get_task_features(obs)
     obs['obj_gt'] = self.get_gt_objective(obs)
-    # TODO: transparent here
     obs['image'] = self.render()
     if self.segmentation:
       obs['segmentation'] = self.render_segm()
     obs['task_name'] = self._curr_env
     return obs
+  
+  def parse_obs(self, obs_vec):
+    obs = {'flat_obs': obs_vec}
+    obs['pos_hand'] = obs_vec[:3]
+    obs['gripper_distance_apart'] = obs_vec[3]
+    obs['obj1_pos_quat'] = obs_vec[4:11]
+    obs['obj2_pos_quat'] = obs_vec[11:18]
+    obs['prev_step_pos_hand'] = obs_vec[18:21]
+    obs['prev_step_gripper_distance_apart'] = obs_vec[21]
+    obs['prev_step_obj1_pos_quat'] = obs_vec[22:29]
+    obs['prev_step_obj2_pos_quat'] = obs_vec[29:36]
+    obs['goal_position'] = obs_vec[36:39]
+    obs['task_vector_raw'] = self.unwrapped._last_rand_vec.copy()
+    return obs
+
+  def get_gt_objective(self, obs):
+    handle_target_xy = obs["obj1_pos_quat"][:2] - self.unwrapped._target_pos[:2]
+    handle_target_dist = np.linalg.norm(obs["obj1_pos_quat"][:2] - self.unwrapped._target_pos[:2])
+    h_t_sin, h_t_cos = handle_target_xy[0]/handle_target_dist, handle_target_xy[1]/handle_target_dist
+    drawer_xy = copy(self._env.sim.model.body_pos[self._env.model.body_name2id('drawer')][:2])
+    handle_xy = copy(obs["obj1_pos_quat"][:2])
+    task_feature = copy(obs['task_vector'][3:])
+    if self.gt_features == 'xy':
+      # total feature dim = 7 + task_feature dim (expected 1)
+      features = (handle_target_xy, drawer_xy, handle_xy,
+                  handle_target_dist, task_feature)
+    if self.gt_features == 'sin':
+      # total feature dim = 7 + task_feature dim (expected 2)
+      features = (h_t_sin, h_t_cos,
+                  drawer_xy, handle_xy,
+                  handle_target_dist, task_feature)
+    return np.hstack(features)
+
+  def get_task_features(self, obs):
+    task_vector_raw = obs['task_vector_raw']
+    if self.task_features == 'raw':
+      # if we want raw last_rand_vec
+      return task_vector_raw
+    task_angle_rad = task_vector_raw[-1] * ( math.pi/180. ) - math.pi
+    if self.task_features == 'rad':
+      # if we want last_rand_vec with angle in radians
+      return np.hstack((task_vector_raw[:-1], task_angle_rad))
+    elif self.task_features == 'sin':
+      # if we want last_rand_vec with angle represented as sin and cos
+      sin = np.sin(task_angle_rad)
+      cos = np.cos(task_angle_rad)
+      return np.hstack((task_vector_raw[:-1], sin, cos))
 
   def render(self, *args, **kwargs):
     if kwargs.get('mode', 'rgb_array') != 'rgb_array':
