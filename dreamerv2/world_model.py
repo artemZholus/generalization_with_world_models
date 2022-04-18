@@ -1,11 +1,7 @@
 import tensorflow as tf
 from tensorflow.keras import mixed_precision as prec
 
-import elements
 import common
-import expl
-import math
-import proposal
 
 
 class WorldModel(common.Module):
@@ -218,22 +214,24 @@ class DualWorldModel(WorldModel):
       *self.heads.values()]
 
   def preprocess(self, obs):
-    img = obs['image']
-    img = tf.cast(img, self.dtype) / 255.0 - 0.5
     obs = super().preprocess(obs)
+    img = obs['image']
     img_depth = 1 if self.config.grayscale else 3
-    n_cams = obs['image'].shape[-1] // img_depth
+    n_cams = img.shape[-1] // img_depth
     repeats = [img_depth] * n_cams
     if self.config.transparent:
       subject = tf.cast(obs['segmentation'][..., :1] == 1, self.dtype)
       obj = tf.cast(obs['segmentation'][..., 1:] == 2, self.dtype)
       obs['subj_image'] = tf.repeat(subject, repeats=repeats, axis=-1) * img[..., :3]
       obs['obj_image'] = tf.repeat(obj, repeats=repeats, axis=-1) * img[..., 3:]
+    elif self.config.separate_imgs:
+      subject = tf.cast(obs['segmentation'] == 2, self.dtype)
+      obs['subj_image'] = tf.repeat(subject, repeats=repeats, axis=-1) * obs['image']
     else:
       subject = tf.cast(obs['segmentation'] == 1, self.dtype)
       obj = tf.cast(obs['segmentation'] == 2, self.dtype)
-      obs['subj_image'] = tf.repeat(subject, repeats=repeats, axis=-1) * obs['image']
-      obs['obj_image'] = tf.repeat(obj, repeats=repeats, axis=-1) * obs['image']
+      obs['subj_image'] = tf.repeat(subject, repeats=repeats, axis=-1) * img
+      obs['obj_image'] = tf.repeat(obj, repeats=repeats, axis=-1) * img
     return obs
 
   def loss(self, data, state=None):
