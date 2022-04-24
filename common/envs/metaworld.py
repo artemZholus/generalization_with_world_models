@@ -296,7 +296,7 @@ class MetaWorld:
   @property
   def action_space(self):
     spec = self._env.action_space
-    action = gym.spaces.Box(spec.low, spec.high, dtype=np.float32)
+    action = gym.spaces.Box(spec.low[:-1], spec.high[:-1], dtype=np.float32)
     return gym.spaces.Dict({'action': action})
 
   def parse_obs(self, obs_vec):
@@ -325,11 +325,12 @@ class MetaWorld:
   def step(self, action):
     action = action['action']
     assert np.isfinite(action).all(), action
+    aug_action = np.concatenate([action,[1]], 0)
     acc_reward = 0
     for _ in range(self._action_repeat):
       if self.transparent:
-        tr_promise = self._tr_env.call('step', action)
-      obs_vec, reward, done, info = self._env.step(action)
+        tr_promise = self._tr_env.call('step', aug_action)
+      obs_vec, reward, done, info = self._env.step(aug_action)
       if self.transparent:
         tr_obs_vec, tr_reward, tr_done, tr_info = tr_promise()
       acc_reward += reward or 0
