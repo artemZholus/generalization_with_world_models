@@ -68,7 +68,7 @@ class RSSM(common.StochPostPriorNet):
     return post, prior
 
   @tf.function
-  def imagine(self, action, state=None):
+  def imagine(self, action, state=None, **kws):
     swap = lambda x: tf.transpose(x, [1, 0] + list(range(2, len(x.shape))))
     if state is None:
       state = self.initial(tf.shape(action)[0])
