@@ -125,7 +125,7 @@ class MetaWorld:
   def __init__(self, name, action_repeat=1, size=(64, 64), 
       randomize_env=True, randomize_tasks=False, offscreen=True, 
       cameras=None, segmentation=True, syncfile=None,
-      worker_id=None, transparent=False,
+      worker_id=None, transparent=False, hand_near_drawer=False
     ):
     """
     Args: 
@@ -160,10 +160,11 @@ class MetaWorld:
       task_name = f'{task}-v2'
       dom = metaworld.ML1(task_name)
       if transparent:
-        dom_transparent = metaworld.ML1(task_name, transparent_sawyer=True)
+        dom_transparent = metaworld.ML1(
+          task_name, transparent_sawyer=True)
     for name, env_cls in dom.train_classes.items():
       with NullContext() if syncfile is None else FileLock(syncfile):
-        env = env_cls()
+        env = env_cls(hand_near_drawer=hand_near_drawer)
       all_tasks = [task for task in dom.train_tasks
                     if task.env_name == name]
       task_id = random.choice(range(len(all_tasks)))
@@ -175,7 +176,7 @@ class MetaWorld:
       if transparent:
         with NullContext() if syncfile is None else FileLock(syncfile):
           tr_env_cls = dom_transparent.train_classes[name]
-          tr_env = Async(partial(tr_env_cls, transparent_sawyer=True))
+          tr_env = Async(partial(tr_env_cls, transparent_sawyer=True, hand_near_drawer=hand_near_drawer))
           self.tr_envs_cls[name] = tr_env
           tr_env.call('set_task', task)()
     np.random.seed(worker_id or 1)
@@ -296,7 +297,7 @@ class MetaWorld:
   @property
   def action_space(self):
     spec = self._env.action_space
-    action = gym.spaces.Box(spec.low, spec.high, dtype=np.float32)
+    action = gym.spaces.Box(spec.low[:3], spec.high[:3], dtype=np.float32)
     return gym.spaces.Dict({'action': action})
 
   def parse_obs(self, obs_vec):
@@ -324,6 +325,7 @@ class MetaWorld:
 
   def step(self, action):
     action = action['action']
+    action = np.concatenate([action, np.array([1.])], axis=0)
     assert np.isfinite(action).all(), action
     acc_reward = 0
     for _ in range(self._action_repeat):
