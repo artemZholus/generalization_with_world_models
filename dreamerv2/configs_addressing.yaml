@@ -9,6 +9,7 @@ defaults:
   test_tasks_file: none
   randomize_tasks: false
   env_params: ''
+  hand_near_drawer: False
   num_envs: 1
   parallel: False
   iid_eval: False
@@ -316,6 +317,7 @@ mtw:
   task: metaworld_ml1_reach
   img_channels: 6
   env_params: "{cameras: [corner, corner3], offscreen: True, randomize_tasks: True}"
+  hand_near_drawer: False
   time_limit: 500
   action_repeat: 1
   eval_every: 1e4
@@ -337,6 +339,7 @@ mtw:
 
 onscreen:
   env_params: "{cameras: [corner, corner3], offscreen: False, randomize_tasks: True}"
+  hand_near_drawer: False
 
 ml1:
   logging.exp_name: ml1
@@ -348,6 +351,7 @@ rotated_drawer_close:
   logging.exp_name: ml1_rotated
   img_channels: 3
   env_params: "{cameras: [topview], offscreen: True, randomize_tasks: True}"
+  hand_near_drawer: False
   eval_eps: 10
   num_envs: 10
   parallel: true
