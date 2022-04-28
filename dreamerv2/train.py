@@ -193,7 +193,7 @@ atexit.register(Async.close_all)
 dummy_env = make_env(config, 'train')
 action_space = dummy_env.action_space['action']
 def iter_tasks(kind):
-  base = np.array([0.02, 0.9 , 0.  , 0.  ])
+  base = np.array([0.02, 1., 0.09, 0.  ])
   while True:
     if kind == 'umbrella':
       if np.random.rand() > 0.5:
@@ -236,7 +236,7 @@ def generate_tasks(name, kind):
     name: drawer-open | drawer-close
     kind: monotonic | umbrella
   """
-  base = np.array([0.02, 0.9 , 0.  , 0.  ])
+  base = np.array([0.02,  1.,  0.09, 0.  ])
   if kind == 'umbrella':
     high = np.random.randint(135, 221, 24)
     low = np.random.randint(315, 401, 24) % 360

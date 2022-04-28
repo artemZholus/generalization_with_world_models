@@ -227,7 +227,7 @@ if prefill:
   eval_driver(random_agent, episodes=1)
   train_driver.reset()
   eval_driver.reset()
-freezed_replay = True
+freezed_replay = False
 print('Create agent.')
 train_dataset = iter(train_replay.dataset(**config.dataset))
 # eval_dataset = iter(eval_replay.dataset(**config.dataset))

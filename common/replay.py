@@ -79,6 +79,9 @@ class Replay:
     example['t'] = tf.convert_to_tensor(np.array([t for t in range(length)]))
     types = {k: v.dtype for k, v in example.items()}
     shapes = {k: (None,) + v.shape[1:] for k, v in example.items()}
+    if 'action' in shapes:
+      # TODO: a workaround for metaworld back compatibility
+      shapes['action'] = (None, 3)
     if not sequential:
       generator = lambda: sample_episodes(
           self._directory, length, 
@@ -199,6 +202,9 @@ def sample_episodes(directory=None, length=None, balance=False, rescan=100, cach
         episode['t'] = tf.convert_to_tensor(np.array([
           t for t in range(index, index+length)
         ]))
+        # TODO: a specific convertion between old and new metaworl envs
+        if 'action' in episode:
+          episode['action'] = episode['action'][..., :3]
       yield episode
 
 def iterate_episodes(episodes=None, directory=None, length=None):
