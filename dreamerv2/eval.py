@@ -120,7 +120,9 @@ def make_env(config, mode, **kws):
     params = yaml.safe_load(config.env_params)
     params.update(kws)
     env = common.MetaWorld(
-      task, config.action_repeat, config.image_size, transparent=config.transparent, **params
+      task, config.action_repeat, config.image_size, transparent=config.transparent, 
+      hand_near_drawer=config.hand_near_drawer, fingers_closed=config.fingers_closed,
+      hand_angle_delta=config.hand_angle_delta, **params
     )
     env.dump_tasks(str(logdir / 'tasks.pkl'))
     env = common.NormalizeAction(env)

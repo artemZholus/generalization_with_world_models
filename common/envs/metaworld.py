@@ -125,7 +125,8 @@ class MetaWorld:
   def __init__(self, name, action_repeat=1, size=(64, 64), 
       randomize_env=True, randomize_tasks=False, offscreen=True, 
       cameras=None, segmentation=True, syncfile=None,
-      worker_id=None, transparent=False, hand_near_drawer=False
+      worker_id=None, transparent=False, hand_near_drawer=False,
+      hand_angle_delta=0, fingers_closed=True
     ):
     """
     Args: 
@@ -153,6 +154,7 @@ class MetaWorld:
     self.envs_cls = {}
     self.tr_envs_cls = {}
     self.tasks_generator = None
+    self.fingers_closed = fingers_closed
     self.transparent = transparent
     if domain == 'mt10':
       dom = metaworld.MT10()
@@ -164,7 +166,8 @@ class MetaWorld:
           task_name, transparent_sawyer=True)
     for name, env_cls in dom.train_classes.items():
       with NullContext() if syncfile is None else FileLock(syncfile):
-        env = env_cls(hand_near_drawer=hand_near_drawer)
+        env = env_cls(hand_near_drawer=hand_near_drawer, hand_angle_delta=hand_angle_delta,
+          fingers_closed=fingers_closed)
       all_tasks = [task for task in dom.train_tasks
                     if task.env_name == name]
       task_id = random.choice(range(len(all_tasks)))
@@ -176,7 +179,9 @@ class MetaWorld:
       if transparent:
         with NullContext() if syncfile is None else FileLock(syncfile):
           tr_env_cls = dom_transparent.train_classes[name]
-          tr_env = Async(partial(tr_env_cls, transparent_sawyer=True, hand_near_drawer=hand_near_drawer))
+          tr_env = Async(partial(tr_env_cls, transparent_sawyer=True, 
+            hand_near_drawer=hand_near_drawer, hand_angle_delta=hand_angle_delta,
+            fingers_closed=fingers_closed))
           self.tr_envs_cls[name] = tr_env
           tr_env.call('set_task', task)()
     np.random.seed(worker_id or 1)
@@ -325,7 +330,7 @@ class MetaWorld:
 
   def step(self, action):
     action = action['action']
-    action = np.concatenate([action, np.array([1.])], axis=0)
+    action = np.concatenate([action, np.array([1. if self.fingers_closed else -1.])], axis=0)
     assert np.isfinite(action).all(), action
     acc_reward = 0
     for _ in range(self._action_repeat):

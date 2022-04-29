@@ -10,6 +10,8 @@ defaults:
   randomize_tasks: false
   env_params: ''
   hand_near_drawer: False
+  hand_angle_delta: 0
+  fingers_closed: True
   num_envs: 1
   parallel: False
   iid_eval: False
