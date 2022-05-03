@@ -2,6 +2,7 @@ import os
 
 import gym
 import numpy as np
+from scipy.signal import convolve2d
 
 from causal_world.envs import CausalWorld as CausalWorldEnv
 from causal_world.task_generators import generate_task
@@ -59,9 +60,9 @@ class NullContext:
 
 class CausalWorld:
 
-  def __init__(self, task_family, variables_space='space_a_b', action_repeat=1, 
+  def __init__(self, task_family, variables_space='space_a_b', action_repeat=1, skip_frame=10, 
                size=(64, 64), randomize_env=False, randomize_tasks=False, randomize_envs=True,
-               offscreen=True,  worker_id=None, syncfile=None, observation_mode='pixel'):
+               offscreen=True,  worker_id=None, syncfile=None, observation_mode='structured'):
     if offscreen:
       os.environ['MUJOCO_GL'] = 'egl'
     else:
@@ -77,12 +78,13 @@ class CausalWorld:
                                   normalize_observations=False,
                                   normalize_actions=False,
                                   initialize_all_clients=False,
-                                  skip_frame=3,
+                                  skip_frame=skip_frame,
                                   camera_indicies=[0, 1],
                                   action_mode='end_effector_positions',
                                   observation_mode=observation_mode)
     if randomize_envs:
-      self._env.sample_new_goal()
+      goal_intervention = self._env.sample_new_goal()
+      self._env.set_starting_state(goal_intervention)
     if randomize_tasks:
       self._env = CurriculumWrapper(self._env,
                             intervention_actors=[GoalInterventionActorPolicy()],
@@ -99,6 +101,8 @@ class CausalWorld:
                                 self._distances,
                                 self._base_positions,
                                 self._image_content)
+    self.ker = np.ones((3,3))
+    self.ker /= 9.
     
   @property
   def unwrapped(self):
@@ -212,6 +216,22 @@ class CausalWorld:
       obj_mask |= (segm == obj_id)
     for subj_id in robot_ids:
       subj_mask |= (segm == subj_id)
+
+    # roughly: we want to marginalize lone edges that emerged due to GPU-specific 
+    # segmentation artifacts. This is done by convolving image w/ 3x3 avg. filter
+    # and dropping elements <= 0.33 (those which occupy <= 1/3 of the window)
+    conv_subj = convolve2d(subj_mask.astype(np.float32), self.ker, mode='same')
+    subj_mask = conv_subj > 0.36
+    conv_obj = convolve2d(obj_mask.astype(np.float32), self.ker, mode='same')
+    obj_mask = conv_obj > 0.36
+    
+    subj_mask = subj_mask.reshape(self._size[0], self._size[0] // self._size[0], 
+                                  self._size[1], self._size[1] // self._size[1]
+    ).mean(axis=(1, 3)) > 0.5
+
+    obj_mask = obj_mask.reshape(self._size[0], self._size[0] // self._size[0], 
+                                self._size[1], self._size[1] // self._size[1]
+    ).mean(axis=(1, 3)) > 0.5
 
     res[subj_mask] = 1
     res[obj_mask] = 2
