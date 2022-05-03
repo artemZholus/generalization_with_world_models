@@ -109,6 +109,8 @@ class Agent(common.Module):
     if do_ac_step:
       if 'obj_gt' in data:
         obj_gt = tf.cast(data['obj_gt'], dtype=self.dtype)
+      else:
+        obj_gt = None
       metrics.update(self._task_behavior.train(self.wm, start, reward, 
                                                task_vec=data.get('task_vector', None), obj_gt=obj_gt))
     if self.config.expl_behavior != 'greedy':

@@ -634,6 +634,8 @@ class DualReasoner(RSSM):
     if task_vec is not None:
       task_vec = self._cast(task_vec)
       prior_update_util = tf.concat([prior_subj_feat, task_vec], -1)
+    else:
+      prior_update_util = prior_subj_feat
     prior_util = self.condition_model.img_step(prior_update_util, sample=sample)
     prior_update_obj = self.condition_model.get_feat(prior_util)
     prior_obj = self.obj_reasoner.img_step(prev_state=prev_obj,
