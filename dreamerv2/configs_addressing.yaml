@@ -145,9 +145,7 @@ dual_v2:
   obj_encoder: {depth: 48, act: elu, kernels: [4, 4, 4, 4], keys: [obj_image], rect: False}
 
 dual_v1:
-  world_model: dual
   rssm: {hidden: 200, deter: 200, stoch: 30, discrete: False, act: elu, std_act: sigmoid2, min_std: 0.1}
-  subj_strategy: 'instant'
   subj_encoder: {depth: 32, act: relu, kernels: [4, 4, 4, 4], keys: [subj_image], rect: False}
   subj_rssm: {hidden: 200, deter: 200, stoch: 30, discrete: False, act: elu, std_act: sigmoid2, min_std: 0.1}
   cond_kws: {size: 50, hidden: 200, discrete: False, act: elu, layers: 2}
@@ -246,32 +244,20 @@ mtw:
   kl.free: 1.0
   dataset.oversample_ends: False
 
-c_world:
-
+cw:
   task: causal_pushing
+  segmentation: True
+  transparent: False
   img_channels: 6
-  num_envs: 20
-  env_params: "{offscreen: True, randomize_tasks: False, randomize_envs: True, observation_mode: structured}"
-  time_limit: 500
+  num_envs: 10
+  parallel: true
+  env_params: "{offscreen: True, randomize_tasks: False, randomize_envs: True, observation_mode: structured, skip_frame: 10}"
   action_repeat: 1
-  eval_every: 1e4
-  log_every: 1e3
-  prefill: 2500
-  train_every: 5
-  pretrain: 100
   pred_discount: False
-  grad_heads: [image, reward]
-  rssm: {hidden: 200, deter: 200}
-  model_opt.lr: 3e-4
-  actor_opt.lr: 8e-5
-  critic_opt.lr: 8e-5
-  actor_ent: 1e-4
   discount: 0.99
-  actor_grad: dynamics
-  kl.free: 1.0
   dataset.oversample_ends: False
 
-c_world_logging:
+cw_logging:
   logging.exp_name: causal
   logging.env_name: causal
   logdir: $DATA/tmp_noroot/{run_id}
@@ -329,6 +315,51 @@ close_full:
   task: metaworld_ml1_drawer-close-rotated
   train_tasks_file: ./rotated_drawer_tasks/close_full_train
   test_tasks_file: ./rotated_drawer_tasks/close_full_test
+
+lighter_agent:
+  critic.layers: 3
+  decoder.act: elu
+  decoder.depth: 32
+  kl.balance: 0.5
+  kl.obj.free: 0.0
+  loss_scales.obj_kl: 3
+  obj_encoder.act: elu
+  obj_encoder.depth: 32
+  subj_encoder.act: elu
+  subj_encoder.depth: 32
+  rssm.hidden: 200
+  rssm.discrete: 0
+  actor.layers: 3
+  reward_head.layers: 3
+  # cond_model_size: 32
+  # cond_kws.discrete: 16
+  cond_kws.size: 200
+  cond_kws.discrete: 0
+  iid_eval: False
+
+dreamer:
+  world_model: dreamer
+  grad_heads: [image, reward]
+
+cw_training:
+  eval_every: 1e4
+  log_every: 1e3
+  prefill: 5000
+  train_every: 10
+  train_steps: 2
+  eval_eps: 10
+  pretrain: 100
+  model_opt.lr: 0.0006
+  actor_opt.lr: 8e-5
+  critic_opt.lr: 8e-5
+  critic_opt.wd: 0.000001
+  actor_ent: 1e-4
+  discount: 0.99
+  actor_grad: dynamics
+  kl.free: 1.0
+
+cw_agent:
+  encoder.groups: 2
 
 causal:
   segmentation: True
