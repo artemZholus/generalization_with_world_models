@@ -137,7 +137,7 @@ class ConditionModel(StochPostPriorNet):
 class ConvEncoder(common.Module):
 
   def __init__(
-      self, depth=32, act=tf.nn.elu, kernels=(4, 4, 4, 4), depths=None, strides=None, keys=['image'], rect=False):
+      self, depth=32, act=tf.nn.elu, kernels=(4, 4, 4, 4), depths=None, strides=None, groups=1, keys=['image'], rect=False):
     #TODO add rect key
     self._act = getattr(tf.nn, act) if isinstance(act, str) else act
     self._depth = depth
@@ -145,6 +145,7 @@ class ConvEncoder(common.Module):
     self._kernels = kernels
     self._rect = rect
     self._strides = strides
+    self._groups = groups
     self._keys = keys
 
   @tf.function
@@ -152,15 +153,15 @@ class ConvEncoder(common.Module):
     if tuple(self._keys) == ('image',):
       x = tf.reshape(obs['image'], (-1,) + tuple(obs['image'].shape[-3:]))
       if self._rect:
-        x = self._act(self.get(f'h0', tfkl.Conv2D, 1 * self._depth, 4, 2)(x))
-        x = self._act(self.get(f'h1', tfkl.Conv2D, 2 * self._depth, 4, 2)(x))
-        x = self._act(self.get(f'h2', tfkl.Conv2D, 4 * self._depth, 4, 2)(x))
-        x = self._act(self.get(f'h3', tfkl.Conv2D, 4 * self._depth, 3, (1, 2))(x))
-        x = self._act(self.get(f'h4', tfkl.Conv2D, 8 * self._depth, 3, 1)(x))
+        x = self._act(self.get(f'h0', tfkl.Conv2D, 1 * self._depth, 4, 2, groups=self._groups)(x))
+        x = self._act(self.get(f'h1', tfkl.Conv2D, 2 * self._depth, 4, 2, groups=self._groups)(x))
+        x = self._act(self.get(f'h2', tfkl.Conv2D, 4 * self._depth, 4, 2, groups=self._groups)(x))
+        x = self._act(self.get(f'h3', tfkl.Conv2D, 4 * self._depth, 3, (1, 2), groups=self._groups)(x))
+        x = self._act(self.get(f'h4', tfkl.Conv2D, 8 * self._depth, 3, 1, groups=self._groups)(x))
       else:
         for i, kernel in enumerate(self._kernels):
           depth = 2 ** i * self._depth
-          x = self._act(self.get(f'h{i}', tfkl.Conv2D, depth, kernel, 2)(x))
+          x = self._act(self.get(f'h{i}', tfkl.Conv2D, depth, kernel, 2, groups=self._groups)(x))
       x_shape = tf.shape(x)
       x = tf.reshape(x, [x_shape[0], tf.math.reduce_prod(x_shape[1:])])
       shape = tf.concat([tf.shape(obs['image'])[:-3], tf.shape(x)[-1:]], 0)
@@ -177,15 +178,15 @@ class ConvEncoder(common.Module):
         elif len(obs[key].shape) >= 4:
           x = tf.reshape(obs[key], (-1,) + tuple(obs[key].shape[-3:]))
           if self._rect:
-            x = self._act(self.get(f'h0', tfkl.Conv2D, 1 * self._depth, 4, 2)(x))
-            x = self._act(self.get(f'h1', tfkl.Conv2D, 2 * self._depth, 4, 2)(x))
-            x = self._act(self.get(f'h2', tfkl.Conv2D, 4 * self._depth, 4, 2)(x))
-            x = self._act(self.get(f'h3', tfkl.Conv2D, 4 * self._depth, 3, (1, 2))(x))
-            x = self._act(self.get(f'h4', tfkl.Conv2D, 8 * self._depth, 3, 1)(x))
+            x = self._act(self.get(f'h0', tfkl.Conv2D, 1 * self._depth, 4, 2, groups=self._groups)(x))
+            x = self._act(self.get(f'h1', tfkl.Conv2D, 2 * self._depth, 4, 2, groups=self._groups)(x))
+            x = self._act(self.get(f'h2', tfkl.Conv2D, 4 * self._depth, 4, 2, groups=self._groups)(x))
+            x = self._act(self.get(f'h3', tfkl.Conv2D, 4 * self._depth, 3, (1, 2), groups=self._groups)(x))
+            x = self._act(self.get(f'h4', tfkl.Conv2D, 8 * self._depth, 3, 1, groups=self._groups)(x))
           else:
             for i, kernel in enumerate(self._kernels):
               depth = 2 ** i * self._depth
-              x = self._act(self.get(f'h{i}', tfkl.Conv2D, depth, kernel, 2)(x))
+              x = self._act(self.get(f'h{i}', tfkl.Conv2D, depth, kernel, 2, groups=self._groups)(x))
           x = tf.reshape(x, [x.shape[0], np.prod(x.shape[1:])])
           shape = tf.concat([tf.shape(obs[key])[:-3], [x.shape[-1]]], 0)
           features.append(tf.reshape(x, shape))
