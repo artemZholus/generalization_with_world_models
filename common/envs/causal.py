@@ -60,8 +60,8 @@ class NullContext:
 
 class CausalWorld:
 
-  def __init__(self, task_family, variables_space='space_a_b', action_repeat=1, skip_frame=10, 
-               size=(64, 64), randomize_env=False, randomize_tasks=False, randomize_envs=True,
+  def __init__(self, task_family, variables_space='space_a_b', action_repeat=1, size=(64, 64), 
+               skip_frame=10, randomize_env=False, randomize_tasks=False, randomize_envs=True,
                offscreen=True,  worker_id=None, syncfile=None, observation_mode='structured'):
     if offscreen:
       os.environ['MUJOCO_GL'] = 'egl'
