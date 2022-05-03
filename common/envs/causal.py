@@ -76,7 +76,7 @@ class CausalWorld:
                          variables_space=variables_space)
     self._env = CausalWorldEnv(task, seed=self._worker_id, enable_visualization=False, 
                                   normalize_observations=False,
-                                  normalize_actions=False,
+                                  normalize_actions=True,
                                   initialize_all_clients=False,
                                   skip_frame=skip_frame,
                                   camera_indicies=[0, 1],

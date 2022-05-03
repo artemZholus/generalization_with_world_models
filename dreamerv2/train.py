@@ -140,7 +140,6 @@ def make_env(config, mode, **kws):
       task, variables_space, config.action_repeat,
       config.image_size, **params
     )
-    env = common.NormalizeAction(env)
   else:
     raise NotImplementedError(suite)
   env = common.TimeLimit(env, config.time_limit)
