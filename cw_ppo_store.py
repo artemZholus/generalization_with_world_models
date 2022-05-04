@@ -1,0 +1,351 @@
+"""
+This tutorial shows you how to train a policy using stable baselines with PPO
+"""
+import os
+import json
+import time
+import argparse
+import pathlib
+
+import common
+import elements
+import gym
+import numpy as np
+from scipy.signal import convolve2d
+import wandb
+
+from causal_world.task_generators.task import generate_task
+from causal_world.envs.causalworld import CausalWorld
+from stable_baselines3 import PPO
+import tensorflow as tf
+tf.compat.v1.logging.set_verbosity(tf.compat.v1.logging.ERROR)
+from stable_baselines3.common.utils import set_random_seed
+from stable_baselines3.common.vec_env import SubprocVecEnv
+
+
+OBJ_IMG_OBJ_IDS = {
+  'reaching': [],
+  'pushing': [0, 1],
+  'picking': [0, 1],
+  'pick_and_place': [5],
+  'stacking2': [4, 5],
+  'towers': [4, 5, 6, 7, 8],
+}
+FULL_IMG_OBJ_IDS = {
+  'reaching': [],
+  'pushing': [4, 5],
+  'picking': [4, 5],
+  'pick_and_place': [5],
+  'stacking2': [4, 5],
+  'towers': [4, 5, 6, 7, 8],
+}
+FULL_IMG_ROBOT_IDS = {
+  'reaching': [1],
+  'pushing': [1],
+  'picking': [1],
+  'pick_and_place': [1],
+  'stacking2': [1],
+  'towers': [1],
+}
+
+logdir = pathlib.Path('/home/yivchenkov/data/ppo')
+eval_every = 5e5
+
+should_wdb_video = elements.Every(eval_every * 5)
+
+os.environ['MUJOCO_GL'] = 'egl'
+os.environ['WANDB_START_METHOD'] = 'thread'
+
+
+class Monitor(gym.Wrapper):
+    """
+    A monitor wrapper for Gym environments, it is used to know the episode reward, length, time and other data.
+    :param env: The environment
+    :param filename: the location to save a log file, can be None for no log
+    :param allow_early_resets: allows the reset of the environment before it is done
+    :param reset_keywords: extra keywords for the reset call,
+        if extra parameters are needed at reset
+    :param info_keywords: extra information to log, from the information return of env.step()
+    """
+
+    def __init__(
+        self,
+        env: gym.Env,
+        task_family: str='pushing'
+    ):
+        super().__init__(env=env)
+        self.t_start = time.time()
+        self.task_family = task_family
+        self._size=(64, 64)
+        self._yaws=[0, 120, 240]
+        self._pitches=[-60, -60, -60]
+        self._distances=[0.6, 0.6, 0.6]
+        self._base_positions=[[0, 0, 0], [0, 0, 0], [0, 0, 0]]
+        self._image_content = 'full'
+        self.env.set_render_params(self._size, 
+                                   self._yaws,
+                                   self._pitches,
+                                   self._distances,
+                                   self._base_positions,
+                                   self._image_content)
+        self.ker = np.ones((3,3))
+        self.ker /= 9.
+        self._ep = [None]
+
+    def reset(self, **kwargs):
+        """
+        Calls the Gym environment reset. Can only be called if the environment is over, or if allow_early_resets is True
+        :param kwargs: Extra keywords saved for the next episode. only if defined by reset_keywords
+        :return: the first observation of the environment
+        """
+        obs_vec = self.env.reset(**kwargs)
+        act = {'action': np.zeros(self.env.action_space.shape)}
+        obs, segm = self.env.render_with_masks()
+        full_mask = self.convert_segm(segm, 'subj')
+        ob = {'flat_obs': obs_vec,
+              'image': np.concatenate(obs, axis=2),
+              'segmentation': full_mask}
+        tran = {**ob, **act, 'reward': 0.0, 'discount': 1.0, 'done': False, 'reward_mask': 1.0}
+        self._ep[0] = [tran]
+        return obs_vec
+
+    def step(self, action):
+        """
+        Step the environment with the given action
+        :param action: the action
+        :return: observation, reward, done, information
+        """
+        obs_vec, rew, done, info = self.env.step(action)
+
+        act = {'action': np.array(action)}
+        obs, segm = self.env.render_with_masks()
+        full_mask = self.convert_segm(segm, 'subj')
+        ob = {'flat_obs': obs_vec,
+              'image': np.concatenate(obs, axis=2),
+              'segmentation': full_mask}
+        info['discount'] = np.array(1. if not done else 0., np.float32)
+        obs = {k: self._convert(v) for k, v in ob.items()}
+        disc = info.get('discount', np.array(1 - float(done)))
+        tran = {**ob, **act, 'reward': rew, 'discount': disc, 'done': done, 'reward_mask': 1.0}
+        self._ep[0].append(tran)
+        if done:
+            ep = self._ep[0]
+            ep = {k: self._convert([t[k] for t in ep]) for k in ep[0]}
+            per_episode(ep)
+        return obs_vec, rew, done, info
+
+    def convert_segm(self, segm, kind='subj'):
+        obj_img_obj_mask_ids = OBJ_IMG_OBJ_IDS[self.task_family]
+        full_img_obj_mask_ids = FULL_IMG_OBJ_IDS[self.task_family]
+        full_img_robot_mask_ids = FULL_IMG_ROBOT_IDS[self.task_family]
+        if kind == 'obj':
+            obj_ids = obj_img_obj_mask_ids
+            robot_ids = None
+        elif kind == 'subj':
+            obj_ids = full_img_obj_mask_ids
+            robot_ids = full_img_robot_mask_ids
+        masks = [self.segm2mask(segm, obj_ids, robot_ids) for segm in segm]
+        return np.stack(masks, axis=2)
+
+    def segm2mask(self, segm, obj_ids, robot_ids):
+        res = np.zeros(self._size)
+        subj_mask = np.zeros(self._size, dtype=np.bool)
+        obj_mask = np.zeros(self._size, dtype=np.bool)
+
+        obj_ids = obj_ids or []
+        robot_ids = robot_ids or []
+        for obj_id in obj_ids:
+            obj_mask |= (segm == obj_id)
+        for subj_id in robot_ids:
+            subj_mask |= (segm == subj_id)
+
+        # roughly: we want to marginalize lone edges that emerged due to GPU-specific 
+        # segmentation artifacts. This is done by convolving image w/ 3x3 avg. filter
+        # and dropping elements <= 0.33 (those which occupy <= 1/3 of the window)
+        conv_subj = convolve2d(subj_mask.astype(np.float32), self.ker, mode='same')
+        subj_mask = conv_subj > 0.36
+        conv_obj = convolve2d(obj_mask.astype(np.float32), self.ker, mode='same')
+        obj_mask = conv_obj > 0.36
+        
+        subj_mask = subj_mask.reshape(self._size[0], self._size[0] // self._size[0], 
+                                    self._size[1], self._size[1] // self._size[1]
+        ).mean(axis=(1, 3)) > 0.5
+
+        obj_mask = obj_mask.reshape(self._size[0], self._size[0] // self._size[0], 
+                                    self._size[1], self._size[1] // self._size[1]
+        ).mean(axis=(1, 3)) > 0.5
+
+        res[subj_mask] = 1
+        res[obj_mask] = 2
+
+        return res
+
+    def _convert(self, value):
+        value = np.array(value)
+        if np.issubdtype(value.dtype, np.floating):
+            return value.astype(np.float32)
+        elif np.issubdtype(value.dtype, np.signedinteger):
+            return value.astype(np.int32)
+        elif np.issubdtype(value.dtype, np.uint8):
+            return value.astype(np.uint8)
+        return value
+
+
+def per_episode(ep, log_wdb=True, env_name='pushing', mode='train'):
+    length = len(ep['reward']) - 1
+    task_name = None
+    if 'task_name' in ep:
+        task_name = ep['task_name'][0]
+    score = float(ep['reward'].astype(np.float64).sum())
+    print(f'Train episode has {length} steps and return {score:.1f}.')
+    # replay_ = dict(train=train_replay, eval=eval_replay)[mode if 'eval' not in mode else 'eval']
+    print(f'{mode.title()} episode has {length} steps and return {score:.1f}.')
+    common.save_episodes(logdir, [ep])
+    steps_recorded = len(list(logdir.expanduser().glob('*.npz'))) * length
+    prefix = mode if 'eval' in mode else ''
+    if task_name is not None and 'eval' in mode:
+        task_name = task_name[:-len('-v2')]
+        prefix = f'{prefix}_{task_name}'
+    summ = {
+        f'{env_name}/{prefix}_return': score,
+        f'train_env_step': steps_recorded,
+        f'{env_name}/{prefix}_length': length
+    }
+    if log_wdb:
+        wandb.log(summ)
+    if should_wdb_video(steps_recorded) and log_wdb:
+        video = np.transpose(ep['image'], (0, 3, 1, 2))
+        videos = []
+        rows = video.shape[1] // 3
+        for row in range(rows):
+            videos.append(video[:, row * 3: (row + 1) * 3])
+        video = np.concatenate(videos, 3)
+        if log_wdb:
+            wandb.log({f"{mode}_policy": wandb.Video(video, fps=30, format="gif")})
+        video = np.transpose(ep['segmentation'], (0, 3, 1, 2)).astype(np.float)
+        video *= 100
+        videos = []
+        rows = video.shape[1]
+        for row in range(rows):
+            videos.append(video[:, row: row + 1])
+        video = np.concatenate(videos, 3)
+        if log_wdb:
+            wandb.log({f"{mode}_segm_policy": wandb.Video(video, fps=30, format="gif")})
+
+
+def train_policy(num_of_envs, log_relative_path, maximum_episode_length,
+                 skip_frame, seed_num, ppo_config, total_time_steps,
+                 validate_every_timesteps, task_name):
+
+    def _make_env(rank):
+
+        def _init():
+            wandb.init(entity='cds-mipt', project='oc_mbrl', group='causal',
+                   name='causal_ppo_store')
+            task = generate_task(task_generator_id=task_name)
+            env = CausalWorld(task=task,
+                              normalize_actions=True,
+                              normalize_observations=True,
+                              initialize_all_clients=False,
+                              skip_frame=skip_frame,
+                              enable_visualization=False,
+                              seed=seed_num + rank,
+                              action_mode='end_effector_positions',
+                              max_episode_length=maximum_episode_length)
+            env = Monitor(env, task_name)
+            return env
+
+        set_random_seed(seed_num)
+        return _init
+
+    os.makedirs(log_relative_path)
+    policy_kwargs = dict(net_arch=[256, 128])
+    env = SubprocVecEnv([_make_env(rank=i) for i in range(num_of_envs)])
+    model = PPO('MlpPolicy',
+                 env,
+                 _init_setup_model=True,
+                 policy_kwargs=policy_kwargs,
+                 verbose=1,
+                 **ppo_config)
+    save_config_file(ppo_config,
+                     _make_env(0)(),
+                     os.path.join(log_relative_path, 'config.json'))
+    for i in range(int(total_time_steps / validate_every_timesteps)):
+        model.learn(total_timesteps=validate_every_timesteps,
+                    tb_log_name="ppo",
+                    reset_num_timesteps=False)
+        model.save(os.path.join(log_relative_path, 'saved_model'))
+    return
+
+def save_config_file(ppo_config, env, file_path):
+    task_config = env.env._task.get_task_params()
+    for task_param in task_config:
+        if not isinstance(task_config[task_param], str):
+            task_config[task_param] = str(task_config[task_param])
+    env_config = env.env.get_world_params()
+    env.close()
+    configs_to_save = [task_config, env_config, ppo_config]
+    with open(file_path, 'w') as fout:
+        json.dump(configs_to_save, fout)
+
+
+if __name__ == '__main__':
+    ap = argparse.ArgumentParser()
+    #TODO: pass reward weights here!!
+    ap.add_argument("--seed_num", required=False, default=0, help="seed number")
+    ap.add_argument("--skip_frame",
+                    required=False,
+                    default=10,
+                    help="skip frame")
+    ap.add_argument("--max_episode_length",
+                    required=False,
+                    default=250,
+                    help="maximum episode length")
+    ap.add_argument("--total_time_steps_per_update",
+                    required=False,
+                    default=100000,
+                    help="total time steps per update")
+    ap.add_argument("--num_of_envs",
+                    required=False,
+                    default=20,
+                    help="number of parallel environments")
+    ap.add_argument("--task_name",
+                    required=False,
+                    default="pushing",
+                    help="the task nam for training")
+    ap.add_argument("--fixed_position",
+                    required=False,
+                    default=True,
+                    help="define the reset intervention wrapper")
+    ap.add_argument("--log_relative_path", required=True, help="log folder")
+    args = vars(ap.parse_args())
+    total_time_steps_per_update = int(args['total_time_steps_per_update'])
+    num_of_envs = int(args['num_of_envs'])
+    log_relative_path = str(args['log_relative_path'])
+    maximum_episode_length = int(args['max_episode_length'])
+    skip_frame = int(args['skip_frame'])
+    seed_num = int(args['seed_num'])
+    task_name = str(args['task_name'])
+    fixed_position = bool(args['fixed_position'])
+    assert (((float(total_time_steps_per_update) / num_of_envs) /
+             5).is_integer())
+    ppo_config = {
+        "gamma": 0.99,
+        "n_steps": 5000,
+        "ent_coef": 0,
+        "learning_rate": 0.00025,
+        "vf_coef": 0.5,
+        "max_grad_norm": 10,
+        "batch_size": 50,
+        "n_epochs": 4,
+        "tensorboard_log": log_relative_path
+    }
+    train_policy(num_of_envs=num_of_envs,
+                 log_relative_path=log_relative_path,
+                 maximum_episode_length=maximum_episode_length,
+                 skip_frame=skip_frame,
+                 seed_num=seed_num,
+                 ppo_config=ppo_config,
+                 total_time_steps=60000000,
+                 validate_every_timesteps=1000000,
+                 task_name=task_name)
