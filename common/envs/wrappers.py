@@ -139,12 +139,12 @@ class RewardObs:
 
   def step(self, action):
     obs, reward, done, info = self._env.step(action)
-    obs['reward'] = reward
+    obs[self._key] = reward
     return obs, reward, done, info
 
   def reset(self):
     obs = self._env.reset()
-    obs['reward'] = 0.0
+    obs[self._key] = 0.0
     return obs
 
 

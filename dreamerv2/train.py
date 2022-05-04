@@ -153,6 +153,7 @@ def per_episode(ep, mode):
   if 'task_name' in ep:
     task_name = ep['task_name'][0]
   score = float(ep['reward'].astype(np.float64).sum())
+  raw_score = float(ep['raw_reward'].astype(np.float64).sum())
   print(f'{mode.title()} episode has {length} steps and return {score:.1f}.')
   replay_ = replays[mode]
   # replay_ = dict(train=train_replay, eval=eval_replay)[mode if 'eval' not in mode else 'eval']
@@ -162,6 +163,7 @@ def per_episode(ep, mode):
     replays["mt"]._episodes[str(ep_file)] = ep
   logger.scalar(f'{mode}_transitions', replay_.num_transitions)
   logger.scalar(f'{mode}_return', score)
+  logger.scalar(f'{mode}_raw_return', raw_score)
   logger.scalar(f'{mode}_length', length)
   logger.scalar(f'{mode}_eps', replay_.num_episodes)
   prefix = mode if 'eval' in mode else ''
@@ -170,6 +172,7 @@ def per_episode(ep, mode):
     prefix = f'{prefix}_{task_name}'
   summ = {
     f'{config.logging.env_name}/{prefix}_return': score,
+    f'{config.logging.env_name}/{prefix}_raw_return': raw_score,
     f'train_env_step': replays["train"].num_transitions,
     f'eval_env_step': replays["eval"].num_transitions,
     f'{config.logging.env_name}/{prefix}_length': length

@@ -126,6 +126,8 @@ class CausalWorld:
       spaces['image'] = gym.spaces.Box(
         0, 255, self._size + (6,), dtype=np.uint8)
       spaces['segmentation'] = gym.spaces.Box(0, 255, self._size + (2,), dtype=np.uint8)
+    if self._cumulative_rewards:
+      spaces['raw_reward'] = gym.spaces.Box(-np.inf, np.inf, (), dtype=np.float32)
     return gym.spaces.Dict(spaces)
 
   # checked
@@ -153,15 +155,12 @@ class CausalWorld:
   def step(self, action):
     action = action['action']
     assert np.isfinite(action).all(), action
-    acc_reward = 0
+    acc_reward = 0.0
     for _ in range(self._action_repeat):
       obs_vec, reward, done, info = self._env.step(action)
-      acc_reward += reward or 0
+      acc_reward += reward or 0.0
       if done:
         break
-    if self._cumulative_rewards:
-      self._cum_reward += acc_reward
-      reward = self._cum_reward
     if self.observation_mode == 'pixel':
       obs = {'image': obs_vec,
              'robot': obs_vec[:3, ...], 
@@ -172,13 +171,15 @@ class CausalWorld:
       obs = {'flat_obs': obs_vec,
              'image': np.concatenate(obs, axis=2),
              'segmentation': full_mask}
-
+    if self._cumulative_rewards:
+      self._cum_reward += acc_reward
+      reward = self._cum_reward
+      obs['raw_reward'] = acc_reward
     info['discount'] = np.array(1. if not done else 0., np.float32)
     return obs, reward, done, info
 
   def reset(self):
     obs_vec = self._env.reset()
-    self._cum_reward = 0
     # TODO: transparent here
     if self.observation_mode == 'pixel':
       obs = {'flat_obs': obs_vec, 'obs': obs_vec[:3, ...], 'goal': obs_vec[3:, ...]}
@@ -188,6 +189,9 @@ class CausalWorld:
       obs = {'flat_obs': obs_vec,
              'image': np.concatenate(obs, axis=2),
              'segmentation': full_mask}
+    if self._cumulative_rewards:
+      self._cum_reward = 0
+      obs['raw_reward'] = 0.0
     return obs
 
   def render(self):
