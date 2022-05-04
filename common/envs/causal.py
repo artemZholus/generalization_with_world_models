@@ -61,7 +61,7 @@ class NullContext:
 class CausalWorld:
 
   def __init__(self, task_family, variables_space='space_a_b', action_repeat=1, size=(64, 64), 
-               skip_frame=10, randomize_env=False, randomize_tasks=False, randomize_envs=True,
+               skip_frame=10, cumulative_rewards=False, randomize_tasks=False, randomize_envs=True,
                offscreen=True,  worker_id=None, syncfile=None, observation_mode='structured'):
     if offscreen:
       os.environ['MUJOCO_GL'] = 'egl'
@@ -69,12 +69,14 @@ class CausalWorld:
       os.environ['MUJOCO_GL'] = 'glfw'
     self.task_family = task_family
     self._action_repeat = action_repeat
-    self.randomize_env = randomize_env
     self._worker_id = worker_id or 42
+    self._cumulative_rewards = cumulative_rewards
+    self._cum_reward = 0
     self.observation_mode = observation_mode
     task = generate_task(task_generator_id=task_family, 
                          variables_space=variables_space)
-    self._env = CausalWorldEnv(task, seed=self._worker_id, enable_visualization=False, 
+    self._env = CausalWorldEnv(task, seed=self._worker_id, 
+                                  enable_visualization=False, 
                                   normalize_observations=False,
                                   normalize_actions=True,
                                   initialize_all_clients=False,
@@ -157,6 +159,9 @@ class CausalWorld:
       acc_reward += reward or 0
       if done:
         break
+    if self._cumulative_rewards:
+      self._cum_reward += acc_reward
+      reward = self._cum_reward
     if self.observation_mode == 'pixel':
       obs = {'image': obs_vec,
              'robot': obs_vec[:3, ...], 
@@ -173,7 +178,7 @@ class CausalWorld:
 
   def reset(self):
     obs_vec = self._env.reset()
-    
+    self._cum_reward = 0
     # TODO: transparent here
     if self.observation_mode == 'pixel':
       obs = {'flat_obs': obs_vec, 'obs': obs_vec[:3, ...], 'goal': obs_vec[3:, ...]}
