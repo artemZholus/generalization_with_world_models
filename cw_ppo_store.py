@@ -100,12 +100,19 @@ class Monitor(gym.Wrapper):
         """
         obs_vec = self.env.reset(**kwargs)
         act = {'action': np.zeros(self.env.action_space.shape)}
-        obs, segm = self.env.render_with_masks()
-        full_mask = self.convert_segm(segm, 'subj')
-        ob = {'flat_obs': obs_vec,
-              'image': np.concatenate(obs, axis=2),
-              'segmentation': full_mask}
-        tran = {**ob, **act, 'reward': 0.0, 'discount': 1.0, 'done': False, 'reward_mask': 1.0}
+        # obs, segm = self.env.render_with_masks()
+        # full_mask = self.convert_segm(segm, 'subj')
+        # ob = {'flat_obs': obs_vec,
+        #       'image': np.concatenate(obs, axis=2),
+        #       'segmentation': full_mask}
+        tran = {
+            # **ob, 
+            **act, 
+            'reward': 0.0, 
+            'discount': 1.0, 
+            'done': False, 
+            # 'reward_mask': 1.0
+        }
         self._ep[0] = [tran]
         return obs_vec
 
@@ -118,15 +125,22 @@ class Monitor(gym.Wrapper):
         obs_vec, rew, done, info = self.env.step(action)
 
         act = {'action': np.array(action)}
-        obs, segm = self.env.render_with_masks()
-        full_mask = self.convert_segm(segm, 'subj')
-        ob = {'flat_obs': obs_vec,
-              'image': np.concatenate(obs, axis=2),
-              'segmentation': full_mask}
+        # obs, segm = self.env.render_with_masks()
+        # full_mask = self.convert_segm(segm, 'subj')
+        # ob = {'flat_obs': obs_vec,
+        #       'image': np.concatenate(obs, axis=2),
+        #       'segmentation': full_mask}
         info['discount'] = np.array(1. if not done else 0., np.float32)
-        obs = {k: self._convert(v) for k, v in ob.items()}
+        # obs = {k: self._convert(v) for k, v in ob.items()}
         disc = info.get('discount', np.array(1 - float(done)))
-        tran = {**ob, **act, 'reward': rew, 'discount': disc, 'done': done, 'reward_mask': 1.0}
+        tran = {
+            # **ob, 
+            **act, 
+            'reward': rew, 
+            'discount': disc, 
+            'done': done, 
+            # 'reward_mask': 1.0
+        }
         self._ep[0].append(tran)
         if done:
             ep = self._ep[0]
