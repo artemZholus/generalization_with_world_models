@@ -57,7 +57,7 @@ defaults:
   train_ac_eval: False
   grad_heads: [image, reward, discount]
   rssm: {hidden: 400, deter: 400, stoch: 32, discrete: 32, act: elu, std_act: sigmoid2, min_std: 0.1}
-  encoder: {depth: 48, act: elu, kernels: [4, 4, 4, 4], keys: [image], rect: False, groups: 1}
+  encoder: {depth: 48, act: elu, kernels: [4, 4, 4, 4], groups: 1, keys: [image], rect: False}
   decoder: {depth: 48, act: elu, kernels: [5, 5, 6, 6]}
   reward_head: {layers: 4, units: 400, act: elu, dist: mse}
   obj_gt_head: {layers: 2, units: 100, act: elu, dist: mse}
@@ -75,10 +75,10 @@ defaults:
 
   # Obj-Subj World Model
   subj_strategy: 'instant'
-  subj_encoder: {depth: 48, act: elu, kernels: [4, 4, 4, 4], keys: [subj_image], rect: False}
+  subj_encoder: {depth: 48, act: elu, kernels: [4, 4, 4, 4], groups: 1, keys: [subj_image], rect: False}
   subj_rssm: {hidden: 400, deter: 400, stoch: 32, discrete: 32, act: elu, std_act: sigmoid2, min_std: 0.1}
   cond_kws: {size: 50, hidden: 200, discrete: False, act: elu, layers: 2}
-  obj_encoder: {depth: 48, act: elu, kernels: [4, 4, 4, 4], keys: [obj_image], rect: False}
+  obj_encoder: {depth: 48, act: elu, kernels: [4, 4, 4, 4], groups: 1, keys: [obj_image], rect: False}
   obj_rssm: {hidden: 400, deter: 400, stoch: 32, discrete: 32, act: elu, std_act: sigmoid2, min_std: 0.1}
   obj_features: 'img'
 
@@ -256,13 +256,13 @@ cw:
   pred_discount: False
   discount: 0.99
   time_limit: 250
+  iid_eval: False
   dataset.oversample_ends: False
 
 cw_logging:
   logging.exp_name: causal
   logging.env_name: causal
   logdir: $DATA/tmp_noroot/{run_id}
-  steps: 1e6
 
 onscreen:
   env_params: "{cameras: [corner, corner3], offscreen: False, randomize_tasks: True}"
@@ -321,29 +321,39 @@ lighter_agent:
   critic.layers: 3
   decoder.act: elu
   decoder.depth: 32
-  kl.balance: 0.5
-  kl.obj.free: 0.0
-  loss_scales.obj_kl: 3
-  obj_encoder.act: elu
-  obj_encoder.depth: 32
-  subj_encoder.act: elu
-  subj_encoder.depth: 32
-  rssm.hidden: 200
-  rssm.deter: 200
-  rssm.discrete: 0
   actor.layers: 3
   reward_head.layers: 3
   # cond_model_size: 32
   # cond_kws.discrete: 16
-  cond_kws.size: 200
-  cond_kws.discrete: 0
-  iid_eval: False
 
-dreamer:
+cw_cema:
+  world_model: causal
+  grad_heads: [obj_image, subj_image, reward]
+  feature_sets.policy: [subj, task]
+  feature_sets.value: [subj, obj, util]
+  rssm: {hidden: 200, deter: 200, stoch: 30, discrete: False, act: elu, std_act: sigmoid2, min_std: 0.1}
+  subj_encoder: {depth: 48, act: elu, kernels: [4, 4, 4, 4], groups: 2, keys: [subj_image], rect: False}
+  subj_rssm: {hidden: 200, deter: 200, stoch: 30, discrete: False, act: elu, std_act: sigmoid2, min_std: 0.1}
+  cond_kws: {size: 200, hidden: 200, discrete: False, act: elu, layers: 2}
+  obj_encoder: {depth: 48, act: elu, kernels: [4, 4, 4, 4], groups: 2, keys: [obj_image], rect: False}
+  obj_rssm: {hidden: 200, deter: 200, stoch: 30, discrete: False, act: elu, std_act: sigmoid2, min_std: 0.1}
+  kl.subj.free: 1.0
+  kl.subj.balance: 0.8
+  kl.obj.free: 0.0
+  loss_scales.obj_kl: 3
+
+cw_dreamer:
   world_model: dreamer
   grad_heads: [image, reward]
+  encoder.groups: 2
+  kl.free: 1.0
+  kl.balance: 0.8
+  rssm.hidden: 200
+  rssm.deter: 200
+  rssm.discrete: False
 
 cw_training:
+  steps: 3e6
   eval_every: 1e4
   log_every: 1e3
   prefill: 5000
@@ -358,11 +368,6 @@ cw_training:
   actor_ent: 1e-5
   actor_grad: dynamics
   loss_scales.kl: 2.0
-
-cw_agent:
-  encoder.groups: 2
-  kl.free: 1.0
-  kl.balance: 0.8
 
 causal:
   segmentation: True

@@ -77,7 +77,7 @@ class CausalWorld:
                          variables_space=variables_space)
     self._env = CausalWorldEnv(task, seed=self._worker_id, 
                                   enable_visualization=False, 
-                                  normalize_observations=False,
+                                  normalize_observations=True,
                                   normalize_actions=True,
                                   initialize_all_clients=False,
                                   skip_frame=skip_frame,
@@ -140,16 +140,23 @@ class CausalWorld:
   # TODO: modify this function for CausalWorld
   def parse_obs(self, obs_vec):
     obs = {'flat_obs': obs_vec}
-    obs['pos_hand'] = obs_vec[:3]
-    obs['gripper_distance_apart'] = obs_vec[3]
-    obs['obj1_pos_quat'] = obs_vec[4:11]
-    obs['obj2_pos_quat'] = obs_vec[11:18]
-    obs['prev_step_pos_hand'] = obs_vec[18:21]
-    obs['prev_step_gripper_distance_apart'] = obs_vec[21]
-    obs['prev_step_obj1_pos_quat'] = obs_vec[22:29]
-    obs['prev_step_obj2_pos_quat'] = obs_vec[29:36]
-    obs['goal_position'] = obs_vec[36:39]
-    obs['task_vector'] = self.unwrapped._last_rand_vec.copy()
+    # following is valid only for `pushing` task
+    obs['time_left'] = obs_vec[:1]
+    obs['joint_positions'] = obs_vec[1:10]
+    obs['joint_velocities'] = obs_vec[10:19]
+    obs['end_effector_positions'] = obs_vec[19:28]
+    obs['tool_type'] = obs_vec[28:29]
+    obs['tool_size'] = obs_vec[29:32]
+    obs['tool_position'] = obs_vec[32:35]
+    obs['tool_orientation'] = obs_vec[35:39]
+    obs['tool_linear_velocity'] = obs_vec[39:42]
+    obs['tool_angular_velocity'] = obs_vec[39:42]
+    obs['goal_type'] = obs_vec[45:46]
+    obs['goal_size'] = obs_vec[46:49]
+    obs['goal_position'] = obs_vec[49:52]
+    obs['goal_orientation'] = obs_vec[52:56]
+    obs['task_vector'] = obs_vec[49:56]
+    obs['obj_gt'] = obs_vec[32:42]
     return obs
 
   def step(self, action):
@@ -166,11 +173,11 @@ class CausalWorld:
              'robot': obs_vec[:3, ...], 
              'goal': obs_vec[3:, ...]}
     else:
-      obs, segm = self._env.render_with_masks()
+      img, segm = self._env.render_with_masks()
       full_mask = self.convert_segm(segm, 'subj')
-      obs = {'flat_obs': obs_vec,
-             'image': np.concatenate(obs, axis=2),
-             'segmentation': full_mask}
+      obs = self.parse_obs(obs_vec)
+      obs['image'] = np.concatenate(img, axis=2)
+      obs['segmentation'] = full_mask
     if self._cumulative_rewards:
       self._cum_reward += acc_reward
       reward = self._cum_reward
@@ -184,11 +191,11 @@ class CausalWorld:
     if self.observation_mode == 'pixel':
       obs = {'flat_obs': obs_vec, 'obs': obs_vec[:3, ...], 'goal': obs_vec[3:, ...]}
     else:
-      obs, segm = self._env.render_with_masks()
+      img, segm = self._env.render_with_masks()
       full_mask = self.convert_segm(segm, 'subj')
-      obs = {'flat_obs': obs_vec,
-             'image': np.concatenate(obs, axis=2),
-             'segmentation': full_mask}
+      obs = self.parse_obs(obs_vec)
+      obs['image'] = np.concatenate(img, axis=2)
+      obs['segmentation'] = full_mask
     if self._cumulative_rewards:
       self._cum_reward = 0
       obs['raw_reward'] = 0.0

@@ -69,6 +69,8 @@ config = config.update(
     log_every=config.log_every // config.action_repeat,
     time_limit=config.time_limit // config.action_repeat,
     prefill=config.prefill // config.action_repeat)
+if config.segmentation and config.world_model == 'dreamer':
+  config = config.update(img_channels=config.img_channels * 2)
 
 tf.config.experimental_run_functions_eagerly(not config.jit)
 message = 'No GPU found. To actually train on CPU remove this assert.'
