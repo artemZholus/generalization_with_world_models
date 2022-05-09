@@ -329,7 +329,7 @@ lighter_agent:
 cw_cema:
   world_model: causal
   grad_heads: [obj_image, subj_image, reward]
-  feature_sets.policy: [subj, task]
+  feature_sets.policy: [task, subj, obj, util]
   feature_sets.value: [subj, obj, util]
   rssm: {hidden: 200, deter: 200, stoch: 30, discrete: False, act: elu, std_act: sigmoid2, min_std: 0.1}
   subj_encoder: {depth: 48, act: elu, kernels: [4, 4, 4, 4], groups: 2, keys: [subj_image], rect: False}
@@ -339,7 +339,7 @@ cw_cema:
   obj_rssm: {hidden: 200, deter: 200, stoch: 30, discrete: False, act: elu, std_act: sigmoid2, min_std: 0.1}
   kl.subj.free: 1.0
   kl.subj.balance: 0.8
-  kl.obj.free: 0.0
+  kl.obj.free: 0.1
   loss_scales.obj_kl: 3
 
 cw_dreamer:
