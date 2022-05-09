@@ -6,7 +6,7 @@ from scipy.signal import convolve2d
 
 from causal_world.envs import CausalWorld as CausalWorldEnv
 from causal_world.task_generators import generate_task
-from causal_world.intervention_actors import GoalInterventionActorPolicy
+from causal_world.intervention_actors import PushingBlockInterventionActorPolicy
 from causal_world.wrappers.curriculum_wrappers import CurriculumWrapper
 
 
@@ -60,8 +60,10 @@ class NullContext:
 
 class CausalWorld:
 
-  def __init__(self, task_family, variables_space='space_a_b', action_repeat=1, size=(64, 64), 
-               skip_frame=10, cumulative_rewards=False, randomize_tasks=False, randomize_envs=True,
+  def __init__(self, task_family, variables_space='space_a_b', 
+               action_repeat=1, size=(64, 64), skip_frame=10, 
+               cumulative_rewards=False, randomize_tasks=True,
+               random_mass=True, random_size=True, random_pos=True, random_angle=True,
                offscreen=True,  worker_id=None, syncfile=None, observation_mode='structured'):
     if offscreen:
       os.environ['MUJOCO_GL'] = 'egl'
@@ -84,12 +86,15 @@ class CausalWorld:
                                   camera_indicies=[0, 1],
                                   action_mode='end_effector_positions',
                                   observation_mode=observation_mode)
-    if randomize_envs:
-      goal_intervention = self._env.sample_new_goal()
-      self._env.set_starting_state(goal_intervention)
     if randomize_tasks:
+      inter_actor = PushingBlockInterventionActorPolicy(
+        positions=random_pos,
+        orientations=random_angle,
+        masses=random_mass,
+        sizes=random_size
+      )
       self._env = CurriculumWrapper(self._env,
-                            intervention_actors=[GoalInterventionActorPolicy()],
+                            intervention_actors=[inter_actor],
                             actives=[(0, 1000000000, 1, 0)])
     self._size=size
     self._yaws=[0, 120, 240]
@@ -150,13 +155,13 @@ class CausalWorld:
     obs['tool_position'] = obs_vec[32:35]
     obs['tool_orientation'] = obs_vec[35:39]
     obs['tool_linear_velocity'] = obs_vec[39:42]
-    obs['tool_angular_velocity'] = obs_vec[39:42]
+    obs['tool_angular_velocity'] = obs_vec[42:45]
     obs['goal_type'] = obs_vec[45:46]
     obs['goal_size'] = obs_vec[46:49]
     obs['goal_position'] = obs_vec[49:52]
     obs['goal_orientation'] = obs_vec[52:56]
-    obs['task_vector'] = obs_vec[49:56]
-    obs['obj_gt'] = obs_vec[32:42]
+    obs['task_vector'] = obs_vec[46:56]
+    obs['obj_gt'] = obs_vec[29:45]
     return obs
 
   def step(self, action):

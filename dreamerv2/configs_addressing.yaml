@@ -251,7 +251,7 @@ cw:
   img_channels: 6
   num_envs: 10
   parallel: true
-  env_params: "{offscreen: True, randomize_tasks: False, randomize_envs: True, observation_mode: structured, skip_frame: 10, cumulative_rewards: True}"
+  env_params: "{offscreen: True, randomize_tasks: True, observation_mode: structured, skip_frame: 10, cumulative_rewards: True}"
   action_repeat: 1
   pred_discount: False
   discount: 0.99
