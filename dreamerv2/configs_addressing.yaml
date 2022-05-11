@@ -104,6 +104,17 @@ defaults:
     value: [subj, obj, util]
     reward: [util]
 
+  cw_params:
+    random_mass: True
+    random_size: True
+    random_pos: True
+    random_angle: True
+    random_goal: False
+    randomize_tasks: True
+    observation_mode: structured
+    skip_frame: 10
+    cumulative_rewards: True
+
   zero_shot_agent:
     enabled: False
     train_every: 1
@@ -251,7 +262,6 @@ cw:
   img_channels: 6
   num_envs: 10
   parallel: true
-  env_params: "{offscreen: True, randomize_tasks: True, observation_mode: structured, skip_frame: 10, cumulative_rewards: True}"
   action_repeat: 1
   pred_discount: False
   discount: 0.99

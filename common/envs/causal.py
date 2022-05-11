@@ -1,4 +1,4 @@
-import os
+import math
 
 import gym
 import numpy as np
@@ -62,13 +62,9 @@ class CausalWorld:
 
   def __init__(self, task_family, variables_space='space_a_b', 
                action_repeat=1, size=(64, 64), skip_frame=10, 
-               cumulative_rewards=False, randomize_tasks=True,
-               random_mass=True, random_size=True, random_pos=True, random_angle=True,
-               offscreen=True,  worker_id=None, syncfile=None, observation_mode='structured'):
-    if offscreen:
-      os.environ['MUJOCO_GL'] = 'egl'
-    else:
-      os.environ['MUJOCO_GL'] = 'glfw'
+               cumulative_rewards=True, randomize_tasks=True,
+               random_mass=True, random_size=True, random_pos=True, random_angle=True, random_goal=False,
+               worker_id=None, syncfile=None, observation_mode='structured'):
     self.task_family = task_family
     self._action_repeat = action_repeat
     self._worker_id = worker_id or 42
@@ -91,11 +87,13 @@ class CausalWorld:
         positions=random_pos,
         orientations=random_angle,
         masses=random_mass,
-        sizes=random_size
+        sizes=random_size,
+        goals=random_goal
       )
       self._env = CurriculumWrapper(self._env,
                             intervention_actors=[inter_actor],
                             actives=[(0, 1000000000, 1, 0)])
+    self._task_info=dict()
     self._size=size
     self._yaws=[0, 120, 240]
     self._pitches=[-60, -60, -60]
@@ -160,9 +158,16 @@ class CausalWorld:
     obs['goal_size'] = obs_vec[46:49]
     obs['goal_position'] = obs_vec[49:52]
     obs['goal_orientation'] = obs_vec[52:56]
-    obs['task_vector'] = obs_vec[46:56]
     obs['obj_gt'] = obs_vec[29:45]
     return obs
+
+  def get_task_vector(self):
+    mass = (1.0 - (-1.0)) * (self._task_info['mass'] - 0.015)/(1.0 - 0.015) + (-1.0)
+    size = (1.0 - (-1.0)) * (self._task_info['size'][:2] - 0.055)/(0.095 / 0.055) + (-1.0)
+    radius = (1.0 - (-1.0)) * (self._task_info['cylindrical_position'][:1] - 0.0)/(0.15 - 0.0) + (-1.0)
+    angle = self._task_info['cylindrical_position'][1:2] / math.pi
+    quat = self._task_info['orientation']
+    return np.hstack((mass, size, radius, angle, quat))
 
   def step(self, action):
     action = action['action']
@@ -187,11 +192,13 @@ class CausalWorld:
       self._cum_reward += acc_reward
       reward = self._cum_reward
       obs['raw_reward'] = acc_reward
+    obs['task_vector'] = self.get_task_vector()
     info['discount'] = np.array(1. if not done else 0., np.float32)
     return obs, reward, done, info
 
   def reset(self):
     obs_vec = self._env.reset()
+    self._task_info = self._env._stage.get_object_full_state('tool_block')
     # TODO: transparent here
     if self.observation_mode == 'pixel':
       obs = {'flat_obs': obs_vec, 'obs': obs_vec[:3, ...], 'goal': obs_vec[3:, ...]}
@@ -204,6 +211,7 @@ class CausalWorld:
     if self._cumulative_rewards:
       self._cum_reward = 0
       obs['raw_reward'] = 0.0
+    obs['task_vector'] = self.get_task_vector()
     return obs
 
   def render(self):

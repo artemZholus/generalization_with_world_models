@@ -136,8 +136,9 @@ def make_env(config, mode, **kws):
     env = common.NormalizeAction(env)
   elif suite == 'causal':
     variables_space = dict(train='space_a', eval='space_b')[mode]
-    params = yaml.safe_load(config.env_params)
-    params.update(kws)
+    # params = yaml.safe_load(config.env_params)
+    params = config.cw_params
+    params = params.update(kws)
     env = common.CausalWorld(
       task, variables_space, config.action_repeat,
       config.image_size, **params
