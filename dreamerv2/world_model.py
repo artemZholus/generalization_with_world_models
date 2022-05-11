@@ -19,14 +19,28 @@ class WorldModel(common.Module):
     self.encoder = None
     self.modules = []
     self.model_opt = common.Optimizer('model', **config.model_opt)
+    self.score_model_opt = common.Optimizer('scorer', lr=3e-4, wd=1e-5, eps=1e-5, clip=100)
+    self.u_state_model = common.MyMLP(shape=[config.cond_kws['size']], layers=1, units=200)
     self.dtype = prec.global_policy().compute_dtype
   
   def train(self, data, state=None):
     print('calling train wm')
     with tf.GradientTape() as model_tape:
-      model_loss, state, outputs, metrics = self.loss(data, state)
+      model_loss, state, outputs, metrics = self.loss(data, state, scorer=self.u_state_model
+      )
+      print()
     metrics.update(self.model_opt(model_tape, model_loss, self.modules))
+    metrics.update(self.train_score_model(outputs))
     return state, outputs, metrics
+
+  def train_score_model(self, wm_outs):
+    print('calling train score model')
+    embeds = tf.stop_gradient(wm_outs['embed']['obj'])
+    u_samples = tf.stop_gradient(wm_outs['post']['util']['stoch'])
+    with tf.GradientTape() as sm_tape:
+      mi = self.rssm.uo_mut_inf(self.u_state_model, embeds, u_samples)
+      loss = -mi
+    return self.score_model_opt(sm_tape, loss, [self.u_state_model])
 
   def wm_loss(self, data, state=None):
     print('calling wm_loss')
@@ -56,7 +70,7 @@ class WorldModel(common.Module):
     return post, prior
 
 
-  def loss(self, data, state=None):
+  def loss(self, data, state=None, scorer=None):
     print('calling wm loss')
     data = self.preprocess(data)
     embed = self.encoder(data)
@@ -85,6 +99,10 @@ class WorldModel(common.Module):
         prior=prior, likes=likes, kl=kl_value)
     metrics = {f'{name}_loss': value for name, value in losses.items()}
     metrics.update(self.mut_inf(post, prior))
+    if scorer is not None:
+      uo_mi = self.rssm.uo_mut_inf(scorer, embed['obj'], post['util']['stoch'], loo=True)
+      model_loss += uo_mi
+      metrics['uo_mi'] = uo_mi
     return model_loss, post, outs, metrics
 
   def mut_inf(self, post, prior):
@@ -426,8 +444,8 @@ class CausalWorldModel(WorldModel):
     }
     return metrics
   
-  def loss(self, data, state):
-    model_loss, post, outs, metrics = super().loss(data, state)
+  def loss(self, data, state, scorer=None):
+    model_loss, post, outs, metrics = super().loss(data, state, scorer=scorer)
     metrics['model_subj_kl'] = outs['kl']['subj'].mean()
     metrics['model_obj_kl'] = outs['kl']['obj'].mean()
     metrics['model_util_kl'] = outs['kl']['util'].mean()

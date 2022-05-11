@@ -569,6 +569,23 @@ class DualReasoner(RSSM):
     self.obj_reasoner = ReasonerMLP(**obj_kws)
 
   @tf.function
+  def uo_mut_inf(self, scorer, embs, u_samples, loo=False):
+    NUM_SAMPLES = 1
+    u_dists = scorer(embs)
+    curr_prob = u_dists.log_prob(u_samples)
+    mu, sigma = u_dists.mean(), u_dists.stddev()
+    mu = tf.expand_dims(mu, 2)
+    sigma = tf.expand_dims(sigma, 2)
+    expand_dist = self.condition_model.get_dist({'mean': mu, 'std': sigma})
+    u_samples = tf.expand_dims(u_samples, 1)
+    prob = expand_dist.log_prob(u_samples)
+    marginal_prob = prob.logsumexp(1) - math.log(prob.shape[2])
+    if loo:
+      marginal_prob = tf.stop_gradient(marginal_prob)
+    mi = (curr_prob - marginal_prob).mean()
+    return mi
+
+  @tf.function
   def top_down_step(self, prev_state, emb_obj=None, emb_subj=None, action=None, task_vec=None, current_state=None, sample=True):
     prev_subj, prev_obj = prev_state['subj'], prev_state['obj']
     if current_state is not None:
