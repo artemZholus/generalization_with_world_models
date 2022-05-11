@@ -15,14 +15,28 @@ class WorldModel(common.Module):
     self.encoder = None
     self.modules = []
     self.model_opt = common.Optimizer('model', **config.model_opt)
+    self.score_model_opt = common.Optimizer('scorer', lr=3e-4, wd=1e-5, eps=1e-5, clip=100)
+    self.u_state_model = common.MyMLP(shape=[config.cond_kws['size']], layers=1, units=200)
     self.dtype = prec.global_policy().compute_dtype
 
   def train(self, data, state=None, **kwargs):
     print('calling train wm')
     with tf.GradientTape() as model_tape:
-      model_loss, state, outputs, metrics = self.loss(data, state)
+      model_loss, state, outputs, metrics = self.loss(data, state, scorer=self.u_state_model
+      )
+      print()
     metrics.update(self.model_opt(model_tape, model_loss, self.modules))
+    metrics.update(self.train_score_model(outputs))
     return state, outputs, metrics
+
+  def train_score_model(self, wm_outs):
+    print('calling train score model')
+    embeds = tf.stop_gradient(wm_outs['embed']['obj'])
+    u_samples = tf.stop_gradient(wm_outs['post']['util']['stoch'])
+    with tf.GradientTape() as sm_tape:
+      mi = self.rssm.uo_mut_inf(self.u_state_model, embeds, u_samples)
+      loss = -mi
+    return self.score_model_opt(sm_tape, loss, [self.u_state_model])
 
   def wm_loss(self, data, state=None):
     print('calling wm_loss')
@@ -51,7 +65,7 @@ class WorldModel(common.Module):
     post, prior = self.rssm.observe(embed, data['action'], state, task_vector=data.get('task_vector', None))
     return post, prior
 
-  def loss(self, data, state=None, full=True):
+  def loss(self, data, state=None, full=True, scorer=None):
     print('calling wm loss')
     data = self.preprocess(data)
     embed = self.encoder(data)
@@ -80,6 +94,10 @@ class WorldModel(common.Module):
         prior=prior, likes=likes, kl=kl_value)
     metrics = {f'{name}_loss': value for name, value in losses.items()}
     metrics.update(self.mut_inf(post, prior))
+    if scorer is not None:
+      uo_mi = self.rssm.uo_mut_inf(scorer, embed['obj'], post['util']['stoch'], loo=True)
+      model_loss += uo_mi
+      metrics['uo_mi'] = uo_mi
     return model_loss, post, outs, metrics
 
   def mut_inf(self, post, prior):
@@ -130,7 +148,7 @@ class WorldModel(common.Module):
       obs_total_dim = n_cams * img_dim
       repeats = [img_dim] * n_cams
       assert obs['image'].shape[-1] == img_dim * 2 * n_cams
-      
+
       # segm[..., :n_cams] is subj_mask, segm[..., n_cams:] is obj_mask
       # image[..., :obs_total_dim] is subj_img, image[..., obs_total_dim:] is obj_img
       subj_img_subj_mask = tf.cast(obs['segmentation'][..., :n_cams] == 1, self.dtype)
@@ -385,12 +403,13 @@ class CausalWorldModel(WorldModel):
   def train(self, data, state=None, full=True):
     print('calling train wm')
     with tf.GradientTape() as model_tape:
-      model_loss, state, outputs, metrics = self.loss(data, state, full=full)
+      model_loss, state, outputs, metrics = self.loss(data, state, full=full, scorer=self.u_state_model)
     metrics.update(self.model_opt(model_tape, model_loss, self.modules))
+    metrics.update(self.train_score_model(outputs))
     return state, outputs, metrics
 
-  def loss(self, data, state, full=True):
-    model_loss, post, outs, metrics = super().loss(data, state, full=full)
+  def loss(self, data, state, scorer=None, full=True):
+    model_loss, post, outs, metrics = super().loss(data, state, scorer=scorer, full=full)
     metrics['model_subj_kl'] = outs['kl']['subj'].mean()
     metrics['model_obj_kl'] = outs['kl']['obj'].mean()
     metrics['model_util_kl'] = outs['kl']['util'].mean()

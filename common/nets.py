@@ -266,6 +266,21 @@ class MLP(common.Module):
         return self.get(f'hout', tfkl.Dense, self._shape[0], tf.identity)(x)
 
 
+class MyMLP(MLP):
+  def __init__(self, shape, layers, units, act=tf.nn.elu, dist_layer=True, **out):
+      super().__init__(shape, layers, units, act, dist_layer=False, **out)
+
+  def __call__(self, features):
+      x = super().__call__(features)
+      x = self.get('my_dense', tfkl.Dense, 2 * self._shape[0], None)(x)
+      mean, std = tf.split(x, 2, -1)
+      std = 2 * tf.nn.sigmoid(std / 2)
+      mean = tf.cast(mean, tf.float32)
+      std = tf.cast(std, tf.float32)
+      dist = tfd.MultivariateNormalDiag(mean, std)
+      return dist
+
+
 class GRUCell(tf.keras.layers.AbstractRNNCell):
 
   def __init__(self, size, norm=False, act=tf.tanh, update_bias=-1, **kwargs):
