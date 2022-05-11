@@ -198,7 +198,7 @@ class CausalWorld:
 
   def reset(self):
     obs_vec = self._env.reset()
-    self._task_info = self._env._stage.get_object_full_state('tool_block')
+    self._task_info = self._env.env._stage.get_object_full_state('tool_block')
     # TODO: transparent here
     if self.observation_mode == 'pixel':
       obs = {'flat_obs': obs_vec, 'obs': obs_vec[:3, ...], 'goal': obs_vec[3:, ...]}
