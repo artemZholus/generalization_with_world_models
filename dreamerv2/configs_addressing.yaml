@@ -344,7 +344,7 @@ cw_cema:
   rssm: {hidden: 200, deter: 200, stoch: 30, discrete: False, act: elu, std_act: sigmoid2, min_std: 0.1}
   subj_encoder: {depth: 48, act: elu, kernels: [4, 4, 4, 4], groups: 2, keys: [subj_image], rect: False}
   subj_rssm: {hidden: 200, deter: 200, stoch: 30, discrete: False, act: elu, std_act: sigmoid2, min_std: 0.1}
-  cond_kws: {size: 50, hidden: 200, discrete: False, act: elu, layers: 2}
+  cond_kws: {size: 200, hidden: 200, discrete: False, act: elu, layers: 2}
   obj_encoder: {depth: 48, act: elu, kernels: [4, 4, 4, 4], groups: 2, keys: [obj_image], rect: False}
   obj_rssm: {hidden: 200, deter: 200, stoch: 30, discrete: False, act: elu, std_act: sigmoid2, min_std: 0.1}
   kl.subj.free: 1.0
