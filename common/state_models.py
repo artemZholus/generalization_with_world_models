@@ -630,14 +630,15 @@ class DualReasoner(RSSM):
                                              sample=sample)
     # util imagination
     prior_subj_feat = self.subj_reasoner.get_feat(prior_subj)
-    # prior_update_util = tf.stop_gradient(prior_update_util)
+    prior_update_util = prior_subj_feat
+    prior_util = self.condition_model.img_step(prior_update_util, sample=sample)
+    # obj imagination
+    prior_util_feat = self.condition_model.get_feat(prior_util)
     if task_vec is not None:
       task_vec = self._cast(task_vec)
-      prior_update_util = tf.concat([prior_subj_feat, task_vec], -1)
+      prior_update_obj = tf.concat([prior_util_feat, task_vec], -1)
     else:
-      prior_update_util = prior_subj_feat
-    prior_util = self.condition_model.img_step(prior_update_util, sample=sample)
-    prior_update_obj = self.condition_model.get_feat(prior_util)
+      prior_update_obj = prior_util_feat
     prior_obj = self.obj_reasoner.img_step(prev_state=prev_obj,
                                            prior_update=prior_update_obj,
                                            sample=sample)
