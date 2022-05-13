@@ -247,7 +247,8 @@ def train_policy(num_of_envs, log_relative_path, maximum_episode_length,
                               enable_visualization=False,
                               seed=seed_num + rank,
                               action_mode='end_effector_positions',
-                              max_episode_length=maximum_episode_length)
+                              max_episode_length=maximum_episode_length,
+                              enable_egl=False)
             inter_actor = PushingBlockInterventionActorPolicy(
                 positions=True,
                 orientations=True,
