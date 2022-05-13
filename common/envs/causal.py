@@ -162,7 +162,7 @@ class CausalWorld:
     return obs
 
   def get_task_vector(self):
-    mass = (1.0 - (-1.0)) * (self._task_info['mass'] - 0.015)/(1.0 - 0.015) + (-1.0)
+    mass = (1.0 - (-1.0)) * (self._task_info['mass'] - 0.015)/(0.1 - 0.015) + (-1.0)
     size = (1.0 - (-1.0)) * (self._task_info['size'][:2] - 0.055)/(0.095 / 0.055) + (-1.0)
     radius = (1.0 - (-1.0)) * (self._task_info['cylindrical_position'][:1] - 0.0)/(0.15 - 0.0) + (-1.0)
     angle = self._task_info['cylindrical_position'][1:2] / math.pi
