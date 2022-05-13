@@ -100,7 +100,8 @@ class WorldModel(common.Module):
     metrics = {f'{name}_loss': value for name, value in losses.items()}
     metrics.update(self.mut_inf(post, prior))
     if scorer is not None:
-      uo_mi = self.rssm.uo_mut_inf(scorer, embed['obj'], post['util']['stoch'], loo=False)
+      emb = tf.stop_gradient(embed['obj'])
+      uo_mi = self.rssm.uo_mut_inf(scorer, emb, post['util']['stoch'], loo=False)
       model_loss += uo_mi
       metrics['uo_mi'] = uo_mi
     return model_loss, post, outs, metrics
