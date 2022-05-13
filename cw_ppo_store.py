@@ -1,21 +1,23 @@
 """
 This tutorial shows you how to train a policy using stable baselines with PPO
 """
-import os
-import json
-import time
 import argparse
+import json
+import math
 import pathlib
+import time
+import os
 
 import common
 import elements
 import gym
 import numpy as np
-from scipy.signal import convolve2d
 import wandb
 
 from causal_world.task_generators.task import generate_task
 from causal_world.envs.causalworld import CausalWorld
+from causal_world.intervention_actors import PushingBlockInterventionActorPolicy
+from causal_world.wrappers.curriculum_wrappers import CurriculumWrapper
 from stable_baselines3 import PPO
 import tensorflow as tf
 tf.compat.v1.logging.set_verbosity(tf.compat.v1.logging.ERROR)
@@ -91,6 +93,7 @@ class Monitor(gym.Wrapper):
         self.ker = np.ones((3,3))
         self.ker /= 9.
         self._ep = [None]
+        self._task_info=dict()
 
     def reset(self, **kwargs):
         """
@@ -99,20 +102,18 @@ class Monitor(gym.Wrapper):
         :return: the first observation of the environment
         """
         obs_vec = self.env.reset(**kwargs)
-        act = {'action': np.zeros(self.env.action_space.shape)}
+        self._task_info = self.env.env._stage.get_object_full_state('tool_block')
         # obs, segm = self.env.render_with_masks()
         # full_mask = self.convert_segm(segm, 'subj')
         # ob = {'flat_obs': obs_vec,
         #       'image': np.concatenate(obs, axis=2),
         #       'segmentation': full_mask}
-        tran = {
-            # **ob, 
-            **act, 
-            'reward': 0.0, 
-            'discount': 1.0, 
-            'done': False, 
-            # 'reward_mask': 1.0
-        }
+        tran = self.parse_obs(obs_vec)
+        tran['action'] = np.zeros(self.env.action_space.shape)
+        tran['reward'] = 0.0
+        tran['discount'] = 1.0
+        tran['done'] = False
+        tran['task_vector'] = self.get_task_vector()
         self._ep[0] = [tran]
         return obs_vec
 
@@ -124,23 +125,22 @@ class Monitor(gym.Wrapper):
         """
         obs_vec, rew, done, info = self.env.step(action)
 
-        act = {'action': np.array(action)}
+        info['discount'] = np.array(1. if not done else 0., np.float32)
+        disc = info.get('discount', np.array(1 - float(done)))
+
+        tran = self.parse_obs(obs_vec)
+        tran['action'] = np.array(action)
+        tran['reward'] = rew
+        tran['discount'] = disc
+        tran['done'] = done
+        tran['task_vector'] = self.get_task_vector()
         # obs, segm = self.env.render_with_masks()
         # full_mask = self.convert_segm(segm, 'subj')
         # ob = {'flat_obs': obs_vec,
         #       'image': np.concatenate(obs, axis=2),
         #       'segmentation': full_mask}
-        info['discount'] = np.array(1. if not done else 0., np.float32)
+        
         # obs = {k: self._convert(v) for k, v in ob.items()}
-        disc = info.get('discount', np.array(1 - float(done)))
-        tran = {
-            # **ob, 
-            **act, 
-            'reward': rew, 
-            'discount': disc, 
-            'done': done, 
-            # 'reward_mask': 1.0
-        }
         self._ep[0].append(tran)
         if done:
             ep = self._ep[0]
@@ -148,51 +148,33 @@ class Monitor(gym.Wrapper):
             per_episode(ep)
         return obs_vec, rew, done, info
 
-    def convert_segm(self, segm, kind='subj'):
-        obj_img_obj_mask_ids = OBJ_IMG_OBJ_IDS[self.task_family]
-        full_img_obj_mask_ids = FULL_IMG_OBJ_IDS[self.task_family]
-        full_img_robot_mask_ids = FULL_IMG_ROBOT_IDS[self.task_family]
-        if kind == 'obj':
-            obj_ids = obj_img_obj_mask_ids
-            robot_ids = None
-        elif kind == 'subj':
-            obj_ids = full_img_obj_mask_ids
-            robot_ids = full_img_robot_mask_ids
-        masks = [self.segm2mask(segm, obj_ids, robot_ids) for segm in segm]
-        return np.stack(masks, axis=2)
+    def parse_obs(self, obs_vec):
+        obs = {'flat_obs': obs_vec}
+        # following is valid only for `pushing` task
+        obs['time_left'] = obs_vec[:1]
+        obs['joint_positions'] = obs_vec[1:10]
+        obs['joint_velocities'] = obs_vec[10:19]
+        obs['end_effector_positions'] = obs_vec[19:28]
+        obs['tool_type'] = obs_vec[28:29]
+        obs['tool_size'] = obs_vec[29:32]
+        obs['tool_position'] = obs_vec[32:35]
+        obs['tool_orientation'] = obs_vec[35:39]
+        obs['tool_linear_velocity'] = obs_vec[39:42]
+        obs['tool_angular_velocity'] = obs_vec[42:45]
+        obs['goal_type'] = obs_vec[45:46]
+        obs['goal_size'] = obs_vec[46:49]
+        obs['goal_position'] = obs_vec[49:52]
+        obs['goal_orientation'] = obs_vec[52:56]
+        obs['obj_gt'] = obs_vec[29:45]
+        return obs
 
-    def segm2mask(self, segm, obj_ids, robot_ids):
-        res = np.zeros(self._size)
-        subj_mask = np.zeros(self._size, dtype=np.bool)
-        obj_mask = np.zeros(self._size, dtype=np.bool)
-
-        obj_ids = obj_ids or []
-        robot_ids = robot_ids or []
-        for obj_id in obj_ids:
-            obj_mask |= (segm == obj_id)
-        for subj_id in robot_ids:
-            subj_mask |= (segm == subj_id)
-
-        # roughly: we want to marginalize lone edges that emerged due to GPU-specific 
-        # segmentation artifacts. This is done by convolving image w/ 3x3 avg. filter
-        # and dropping elements <= 0.33 (those which occupy <= 1/3 of the window)
-        conv_subj = convolve2d(subj_mask.astype(np.float32), self.ker, mode='same')
-        subj_mask = conv_subj > 0.36
-        conv_obj = convolve2d(obj_mask.astype(np.float32), self.ker, mode='same')
-        obj_mask = conv_obj > 0.36
-        
-        subj_mask = subj_mask.reshape(self._size[0], self._size[0] // self._size[0], 
-                                    self._size[1], self._size[1] // self._size[1]
-        ).mean(axis=(1, 3)) > 0.5
-
-        obj_mask = obj_mask.reshape(self._size[0], self._size[0] // self._size[0], 
-                                    self._size[1], self._size[1] // self._size[1]
-        ).mean(axis=(1, 3)) > 0.5
-
-        res[subj_mask] = 1
-        res[obj_mask] = 2
-
-        return res
+    def get_task_vector(self):
+        mass = (1.0 - (-1.0)) * (self._task_info['mass'] - 0.015)/(0.1 - 0.015) + (-1.0)
+        size = (1.0 - (-1.0)) * (self._task_info['size'][:2] - 0.055)/(0.095 / 0.055) + (-1.0)
+        radius = (1.0 - (-1.0)) * (self._task_info['cylindrical_position'][:1] - 0.0)/(0.15 - 0.0) + (-1.0)
+        angle = self._task_info['cylindrical_position'][1:2] / math.pi
+        quat = self._task_info['orientation']
+        return np.hstack((mass, size, radius, angle, quat))
 
     def _convert(self, value):
         value = np.array(value)
@@ -227,24 +209,24 @@ def per_episode(ep, log_wdb=True, env_name='pushing', mode='train'):
     }
     if log_wdb:
         wandb.log(summ)
-    if should_wdb_video(steps_recorded) and log_wdb:
-        video = np.transpose(ep['image'], (0, 3, 1, 2))
-        videos = []
-        rows = video.shape[1] // 3
-        for row in range(rows):
-            videos.append(video[:, row * 3: (row + 1) * 3])
-        video = np.concatenate(videos, 3)
-        if log_wdb:
-            wandb.log({f"{mode}_policy": wandb.Video(video, fps=30, format="gif")})
-        video = np.transpose(ep['segmentation'], (0, 3, 1, 2)).astype(np.float)
-        video *= 100
-        videos = []
-        rows = video.shape[1]
-        for row in range(rows):
-            videos.append(video[:, row: row + 1])
-        video = np.concatenate(videos, 3)
-        if log_wdb:
-            wandb.log({f"{mode}_segm_policy": wandb.Video(video, fps=30, format="gif")})
+    # if should_wdb_video(steps_recorded) and log_wdb:
+    #     video = np.transpose(ep['image'], (0, 3, 1, 2))
+    #     videos = []
+    #     rows = video.shape[1] // 3
+    #     for row in range(rows):
+    #         videos.append(video[:, row * 3: (row + 1) * 3])
+    #     video = np.concatenate(videos, 3)
+    #     if log_wdb:
+    #         wandb.log({f"{mode}_policy": wandb.Video(video, fps=30, format="gif")})
+    #     video = np.transpose(ep['segmentation'], (0, 3, 1, 2)).astype(np.float)
+    #     video *= 100
+    #     videos = []
+    #     rows = video.shape[1]
+    #     for row in range(rows):
+    #         videos.append(video[:, row: row + 1])
+    #     video = np.concatenate(videos, 3)
+    #     if log_wdb:
+    #         wandb.log({f"{mode}_segm_policy": wandb.Video(video, fps=30, format="gif")})
 
 
 def train_policy(num_of_envs, log_relative_path, maximum_episode_length,
@@ -266,6 +248,16 @@ def train_policy(num_of_envs, log_relative_path, maximum_episode_length,
                               seed=seed_num + rank,
                               action_mode='end_effector_positions',
                               max_episode_length=maximum_episode_length)
+            inter_actor = PushingBlockInterventionActorPolicy(
+                positions=True,
+                orientations=True,
+                masses=True,
+                sizes=True,
+                goals=False
+            )
+            env = CurriculumWrapper(env,
+                                    intervention_actors=[inter_actor],
+                                    actives=[(0, 1000000000, 1, 0)])
             env = Monitor(env, task_name)
             return env
 
@@ -292,11 +284,11 @@ def train_policy(num_of_envs, log_relative_path, maximum_episode_length,
     return
 
 def save_config_file(ppo_config, env, file_path):
-    task_config = env.env._task.get_task_params()
+    task_config = env.env.env._task.get_task_params()
     for task_param in task_config:
         if not isinstance(task_config[task_param], str):
             task_config[task_param] = str(task_config[task_param])
-    env_config = env.env.get_world_params()
+    env_config = env.env.env.get_world_params()
     env.close()
     configs_to_save = [task_config, env_config, ppo_config]
     with open(file_path, 'w') as fout:
