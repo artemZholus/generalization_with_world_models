@@ -62,7 +62,7 @@ class CausalWorld:
 
   def __init__(self, task_family, variables_space='space_a_b', 
                action_repeat=1, size=(64, 64), skip_frame=10, 
-               cumulative_rewards=True, randomize_tasks=True, sparse_reward=True,
+               cumulative_rewards=True, randomize_tasks=True, sparse_reward=False,
                random_mass=True, random_size=True, random_pos=True, random_angle=True, random_goal=False,
                worker_id=None, syncfile=None, observation_mode='structured'):
     self.task_family = task_family
