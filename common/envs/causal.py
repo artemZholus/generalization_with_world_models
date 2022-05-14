@@ -62,7 +62,7 @@ class CausalWorld:
 
   def __init__(self, task_family, variables_space='space_a_b', 
                action_repeat=1, size=(64, 64), skip_frame=10, 
-               cumulative_rewards=True, randomize_tasks=True,
+               cumulative_rewards=True, randomize_tasks=True, sparse_reward=True,
                random_mass=True, random_size=True, random_pos=True, random_angle=True, random_goal=False,
                worker_id=None, syncfile=None, observation_mode='structured'):
     self.task_family = task_family
@@ -72,7 +72,8 @@ class CausalWorld:
     self._cum_reward = 0
     self.observation_mode = observation_mode
     task = generate_task(task_generator_id=task_family, 
-                         variables_space=variables_space)
+                         variables_space=variables_space,
+                         activate_sparse_reward=sparse_reward)
     self._env = CausalWorldEnv(task, seed=self._worker_id, 
                                   enable_visualization=False, 
                                   normalize_observations=True,
@@ -174,8 +175,8 @@ class CausalWorld:
     assert np.isfinite(action).all(), action
     acc_reward = 0.0
     for _ in range(self._action_repeat):
-      obs_vec, reward, done, info = self._env.step(action)
-      acc_reward += reward or 0.0
+      obs_vec, raw_reward, done, info = self._env.step(action)
+      acc_reward += raw_reward or 0.0
       if done:
         break
     if self.observation_mode == 'pixel':
