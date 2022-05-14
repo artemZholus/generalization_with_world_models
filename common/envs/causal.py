@@ -64,13 +64,14 @@ class CausalWorld:
                action_repeat=1, size=(64, 64), skip_frame=10, 
                cumulative_rewards=True, randomize_tasks=True, sparse_reward=False,
                random_mass=True, random_size=True, random_pos=True, random_angle=True, random_goal=False,
-               worker_id=None, syncfile=None, observation_mode='structured'):
+               worker_id=None, syncfile=None, observation_mode='structured', egl=True):
     self.task_family = task_family
     self._action_repeat = action_repeat
     self._worker_id = worker_id or 42
     self._cumulative_rewards = cumulative_rewards
     self._cum_reward = 0
     self.observation_mode = observation_mode
+    self.randomize_tasks = randomize_tasks
     task = generate_task(task_generator_id=task_family, 
                          variables_space=variables_space,
                          activate_sparse_reward=sparse_reward)
@@ -82,8 +83,9 @@ class CausalWorld:
                                   skip_frame=skip_frame,
                                   camera_indicies=[0, 1],
                                   action_mode='end_effector_positions',
-                                  observation_mode=observation_mode)
-    if randomize_tasks:
+                                  observation_mode=observation_mode,
+                                  enable_egl=egl)
+    if self.randomize_tasks:
       inter_actor = PushingBlockInterventionActorPolicy(
         positions=random_pos,
         orientations=random_angle,
@@ -112,7 +114,10 @@ class CausalWorld:
     
   @property
   def unwrapped(self):
-    return self._env
+    if self.randomize_tasks:
+      return self._env.unwrapped
+    else:
+      return self._env
 
   @property
   def observation_space(self):
@@ -199,7 +204,7 @@ class CausalWorld:
 
   def reset(self):
     obs_vec = self._env.reset()
-    self._task_info = self._env.env._stage.get_object_full_state('tool_block')
+    self._task_info = self.unwrapped._stage.get_object_full_state('tool_block')
     # TODO: transparent here
     if self.observation_mode == 'pixel':
       obs = {'flat_obs': obs_vec, 'obs': obs_vec[:3, ...], 'goal': obs_vec[3:, ...]}
