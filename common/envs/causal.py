@@ -62,17 +62,19 @@ class CausalWorld:
 
   def __init__(self, task_family, variables_space='space_a_b', 
                action_repeat=1, size=(64, 64), skip_frame=10, 
-               cumulative_rewards=True, randomize_tasks=True,
+               cumulative_rewards=True, randomize_tasks=True, sparse_reward=False,
                random_mass=True, random_size=True, random_pos=True, random_angle=True, random_goal=False,
-               worker_id=None, syncfile=None, observation_mode='structured'):
+               worker_id=None, syncfile=None, observation_mode='structured', egl=True):
     self.task_family = task_family
     self._action_repeat = action_repeat
     self._worker_id = worker_id or 42
     self._cumulative_rewards = cumulative_rewards
     self._cum_reward = 0
     self.observation_mode = observation_mode
+    self.randomize_tasks = randomize_tasks
     task = generate_task(task_generator_id=task_family, 
-                         variables_space=variables_space)
+                         variables_space=variables_space,
+                         activate_sparse_reward=sparse_reward)
     self._env = CausalWorldEnv(task, seed=self._worker_id, 
                                   enable_visualization=False, 
                                   normalize_observations=True,
@@ -81,8 +83,9 @@ class CausalWorld:
                                   skip_frame=skip_frame,
                                   camera_indicies=[0, 1],
                                   action_mode='end_effector_positions',
-                                  observation_mode=observation_mode)
-    if randomize_tasks:
+                                  observation_mode=observation_mode,
+                                  enable_egl=egl)
+    if self.randomize_tasks:
       inter_actor = PushingBlockInterventionActorPolicy(
         positions=random_pos,
         orientations=random_angle,
@@ -111,7 +114,10 @@ class CausalWorld:
     
   @property
   def unwrapped(self):
-    return self._env
+    if self.randomize_tasks:
+      return self._env.unwrapped
+    else:
+      return self._env
 
   @property
   def observation_space(self):
@@ -162,7 +168,7 @@ class CausalWorld:
     return obs
 
   def get_task_vector(self):
-    mass = (1.0 - (-1.0)) * (self._task_info['mass'] - 0.015)/(1.0 - 0.015) + (-1.0)
+    mass = (1.0 - (-1.0)) * (self._task_info['mass'] - 0.015)/(0.1 - 0.015) + (-1.0)
     size = (1.0 - (-1.0)) * (self._task_info['size'][:2] - 0.055)/(0.095 / 0.055) + (-1.0)
     radius = (1.0 - (-1.0)) * (self._task_info['cylindrical_position'][:1] - 0.0)/(0.15 - 0.0) + (-1.0)
     angle = self._task_info['cylindrical_position'][1:2] / math.pi
@@ -174,8 +180,8 @@ class CausalWorld:
     assert np.isfinite(action).all(), action
     acc_reward = 0.0
     for _ in range(self._action_repeat):
-      obs_vec, reward, done, info = self._env.step(action)
-      acc_reward += reward or 0.0
+      obs_vec, raw_reward, done, info = self._env.step(action)
+      acc_reward += raw_reward or 0.0
       if done:
         break
     if self.observation_mode == 'pixel':
@@ -198,7 +204,7 @@ class CausalWorld:
 
   def reset(self):
     obs_vec = self._env.reset()
-    self._task_info = self._env.env._stage.get_object_full_state('tool_block')
+    self._task_info = self.unwrapped._stage.get_object_full_state('tool_block')
     # TODO: transparent here
     if self.observation_mode == 'pixel':
       obs = {'flat_obs': obs_vec, 'obs': obs_vec[:3, ...], 'goal': obs_vec[3:, ...]}
