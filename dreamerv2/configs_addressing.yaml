@@ -363,7 +363,7 @@ cw_abstractor:
 cw_dreamer:
   world_model: dreamer
   grad_heads: [image, reward]
-  encoder.groups: 2
+  encoder.groups: 1
   kl.free: 1.0
   kl.balance: 0.8
   rssm.hidden: 200
