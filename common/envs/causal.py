@@ -197,7 +197,9 @@ class CausalWorld:
     if self._cumulative_rewards:
       self._cum_reward += acc_reward
       reward = self._cum_reward
-      obs['raw_reward'] = acc_reward
+    else:
+      reward = acc_reward
+    obs['raw_reward'] = acc_reward
     obs['task_vector'] = self.get_task_vector()
     info['discount'] = np.array(1. if not done else 0., np.float32)
     return obs, reward, done, info
@@ -216,7 +218,7 @@ class CausalWorld:
       obs['segmentation'] = full_mask
     if self._cumulative_rewards:
       self._cum_reward = 0
-      obs['raw_reward'] = 0.0
+    obs['raw_reward'] = 0.0
     obs['task_vector'] = self.get_task_vector()
     return obs
 
