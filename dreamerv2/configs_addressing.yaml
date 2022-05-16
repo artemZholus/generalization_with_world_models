@@ -113,7 +113,7 @@ defaults:
     randomize_tasks: True
     sparse_reward: False
     observation_mode: structured
-    skip_frame: 10
+    skip_frame: 5
     egl: True
     cumulative_rewards: True
 
@@ -267,7 +267,7 @@ cw:
   action_repeat: 1
   pred_discount: False
   discount: 0.99
-  time_limit: 250
+  time_limit: 500
   iid_eval: False
   dataset.oversample_ends: False
 
