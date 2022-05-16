@@ -360,8 +360,10 @@ cw_dreamer:
   world_model: dreamer
   grad_heads: [image, reward]
   encoder.groups: 1
+  encoder.depth: 32
   kl.free: 1.0
   kl.balance: 0.8
+  loss_scales.kl: 2.0
   rssm.hidden: 200
   rssm.deter: 200
   rssm.discrete: False
@@ -381,7 +383,6 @@ cw_training:
   critic_opt.wd: 0.000001
   actor_ent: 1e-5
   actor_grad: dynamics
-  loss_scales.kl: 2.0
 
 causal:
   segmentation: True
