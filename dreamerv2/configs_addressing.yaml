@@ -111,6 +111,7 @@ defaults:
     random_angle: True
     random_goal: False
     randomize_tasks: True
+    normalize_observations: False
     sparse_reward: False
     observation_mode: structured
     skip_frame: 5
