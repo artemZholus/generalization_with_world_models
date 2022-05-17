@@ -66,6 +66,8 @@ config = config.update(
     log_every=config.log_every // config.action_repeat,
     time_limit=config.time_limit // config.action_repeat,
     prefill=config.prefill // config.action_repeat)
+if config.segmentation and config.world_model == 'dreamer':
+  config = config.update(img_channels=config.img_channels * 2)
 
 tf.config.experimental_run_functions_eagerly(not config.jit)
 message = 'No GPU found. To actually train on CPU remove this assert.'
@@ -80,6 +82,18 @@ if config.precision == 16:
 print('Logdir', logdir)
 train_replay = common.Replay(logdir / 'train_replay', config.replay_size, **config.replay)
 eval_replay = common.Replay(logdir / 'eval_replay', config.time_limit or 1, **config.replay)
+Async.UID = str(uuid.uuid4().hex)
+atexit.register(Async.close_all)
+
+replays = dict()
+replays["train"] = common.Replay(logdir / 'train_replay', config.replay_size, **config.replay)
+replays["eval"] = common.Replay(logdir / 'eval_replay', config.time_limit or 1, **config.replay)
+tronev = config.train_wm_eval or config.train_ac_eval
+if config.multitask.mode == 'tronev':
+  replays["eval_rand"] = common.Replay(logdir / 'eval_rand_replay', config.time_limit or 1, **config.replay)
+if (config.multitask.mode != 'none') and (config.multitask.mode != 'tronev'):
+  replays["mt"] = common.Replay(mt_path, load=config.keep_ram, **config.replay)
+step = elements.Counter(replays["train"].total_steps)
 # if config.multitask.mode != 'none':
 #   mt_path = pathlib.Path(config.multitask.data_path).expanduser()
 #   mt_replay = common.Replay(mt_path, load=config.keep_ram, **config.replay)
@@ -124,6 +138,15 @@ def make_env(config, mode, **kws):
     )
     env.dump_tasks(str(logdir / 'tasks.pkl'))
     env = common.NormalizeAction(env)
+  elif suite == 'causal':
+    variables_space = dict(train='space_a', eval='space_b')[mode]
+    # params = yaml.safe_load(config.env_params)
+    params = config.cw_params._flat.copy()
+    params.update(kws)
+    env = common.CausalWorld(
+      task, variables_space, config.action_repeat,
+      config.image_size, **params
+    )
   else:
     raise NotImplementedError(suite)
   env = common.TimeLimit(env, config.time_limit)
@@ -140,12 +163,17 @@ def per_episode(ep, mode):
   if 'task_name' in ep:
     task_name = ep['task_name'][0]
   score = float(ep['reward'].astype(np.float64).sum())
+  raw_score = float(ep['raw_reward'].astype(np.float64).sum())
   print(f'{mode.title()} episode has {length} steps and return {score:.1f}.')
-  replay_ = dict(train=train_replay, eval=eval_replay)[mode]
+  # replay_ = dict(train=train_replay, eval=eval_replay)[mode if 'eval' not in mode else 'eval']
+  replay_ = replays[mode]
+  ep_file = replay_.add(ep)
   if not freezed_replay:
-    ep_file = replay_.add(ep)
+    # ep_file = replay_.add(ep)
+    replays["mt"]._episodes[str(ep_file)] = ep
   logger.scalar(f'{mode}_transitions', replay_.num_transitions)
   logger.scalar(f'{mode}_return', score)
+  logger.scalar(f'{mode}_raw_return', raw_score)
   logger.scalar(f'{mode}_length', length)
   logger.scalar(f'{mode}_eps', replay_.num_episodes)
   prefix = 'eval' if mode == 'eval' else ''
@@ -154,8 +182,9 @@ def per_episode(ep, mode):
     prefix = f'{prefix}_{task_name}'
   summ = {
     f'{config.logging.env_name}/{prefix}_return': score,
-    f'train_env_step': train_replay.num_transitions,
-    f'eval_env_step': eval_replay.num_transitions,
+    f'{config.logging.env_name}/{prefix}_raw_return': raw_score,
+    f'train_env_step': replays["train"].num_transitions,
+    f'eval_env_step': replays["eval"].num_transitions,
     f'{config.logging.env_name}/{prefix}_length': length
   }
   # if config.logging.wdb:
@@ -218,18 +247,34 @@ eval_driver = common.Driver(
 for env in eval_driver._envs:
   env.randomize_tasks = False
 eval_driver.on_episode(lambda ep: per_episode(ep, mode='eval'))
-
-prefill = max(0, config.prefill - train_replay.total_steps)
+kind = 'policy'
+def ev_per_ep(ep, mode='eval'):
+  global kind
+  if kind == 'policy':
+    per_episode(ep, mode='eval')
+  elif kind == 'random':
+    per_episode(ep, mode='rand_eval')
+eval_driver.on_episode(ev_per_ep)
+prefill = max(0, config.prefill - replays["train"].total_steps)
+random_agent = common.RandomAgent(action_space)
 if prefill:
   print(f'Prefill dataset ({prefill} steps).')
   random_agent = common.RandomAgent(action_space)
   train_driver(random_agent, episodes=1)
   eval_driver(random_agent, episodes=1)
+  if config.multitask.mode == 'tronev':
+    kind = 'random'
+    eval_driver(random_agent, episodes=1)
+    kind = 'policy'
   train_driver.reset()
   eval_driver.reset()
 freezed_replay = True
 print('Create agent.')
-train_dataset = iter(train_replay.dataset(**config.dataset))
+
+train_dataset = iter(replays["train"].dataset(**config.dataset))
+eval_dataset = iter(replays["eval"].dataset(**config.dataset))
+if tronev:
+  train_rand_dataset = iter(replays["eval_rand"].dataset(**config.dataset))
 # eval_dataset = iter(eval_replay.dataset(**config.dataset))
 
 agnt = agent.Agent(config, logger, action_space, step, train_dataset)
@@ -244,12 +289,12 @@ from collections import defaultdict
 eval_policy = functools.partial(agnt.policy, mode='eval')
 class MyStatsSaver:
   def __init__(self):
-    self.angle = None
+    self.task = None
     self.stats = defaultdict(list)
 
   def on_episode(self, ep, mode='train'):
     ep_return = sum(ep['reward'])
-    self.stats[self.angle].append(ep_return)
+    self.stats[self.task].append(ep_return)
 
   def dump(self, path):
     stats = {}
@@ -266,18 +311,23 @@ if config.parallel:
 else:
   task_set, task_id = eval_driver._envs[0].get_task_set(env_name)
 
+def tasks_generator():
+  for x_size in range(0.065, 0.13, 0.005): # 13 vals
+    for y_size in range(0.065, 0.13, 0.005): # 13 vals
+      for mass in range(0.015, 0.1, 0.05): # 17 vals
+        yield {'tool_block': {'mass': mass, 'size': np.array([x_size, y_size, 0.085])}}, \
+          (mass, x_size, y_size)
 
-for angle in tqdm(range(0, 360, 5), desc=logdir.stem):
-  curr_task_vec = task_vec.copy()
-  my_saver.angle = angle
-  curr_task_vec[3] = float(angle)
+for task_id, task in tqdm(tasks_generator(), desc=logdir.stem):
+  # curr_task_vec = task_vec.copy()
+  my_saver.task = task
   for env in eval_driver._envs:
     if config.parallel:
-      curr_task = env.call('set_task_vector', curr_task_vec)()
-      env.call('set_task_set', env_name, [curr_task])()
+      curr_task = env.call('set_starting_state', task_id, check_bounds=False)()
+      # env.call('set_task_set', env_name, [curr_task])()
     else:
-      curr_task = env.set_task_vector(curr_task_vec)
-      env.set_task_set(env_name, [curr_task])
+      curr_task = env.set_starting_state(task_id, check_bounds=False)
+      # env.set_task_set(env_name, [curr_task])
 
   eval_driver(eval_policy, episodes=20)
   my_saver.dump(logdir / 'stats.pkl')
