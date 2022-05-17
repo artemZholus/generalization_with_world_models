@@ -62,7 +62,7 @@ class CausalWorld:
 
   def __init__(self, task_family, variables_space='space_a_b', 
                action_repeat=1, size=(64, 64), skip_frame=10, 
-               cumulative_rewards=True, randomize_tasks=True, sparse_reward=False,
+               cumulative_rewards=True, randomize_tasks=True, sparse_reward=False, normalize_observations=False,
                random_mass=True, random_size=True, random_pos=True, random_angle=True, random_goal=False,
                worker_id=None, syncfile=None, observation_mode='structured', egl=True):
     self.task_family = task_family
@@ -77,7 +77,7 @@ class CausalWorld:
                          activate_sparse_reward=sparse_reward)
     self._env = CausalWorldEnv(task, seed=self._worker_id, 
                                   enable_visualization=False, 
-                                  normalize_observations=True,
+                                  normalize_observations=normalize_observations,
                                   normalize_actions=True,
                                   initialize_all_clients=False,
                                   skip_frame=skip_frame,
