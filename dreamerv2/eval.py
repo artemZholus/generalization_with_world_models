@@ -167,8 +167,8 @@ def per_episode(ep, mode):
   print(f'{mode.title()} episode has {length} steps and return {score:.1f}.')
   # replay_ = dict(train=train_replay, eval=eval_replay)[mode if 'eval' not in mode else 'eval']
   replay_ = replays[mode]
-  ep_file = replay_.add(ep)
   if not freezed_replay:
+    ep_file = replay_.add(ep)
     # ep_file = replay_.add(ep)
     replays["mt"]._episodes[str(ep_file)] = ep
   logger.scalar(f'{mode}_transitions', replay_.num_transitions)
@@ -226,14 +226,14 @@ train_driver = common.Driver(
   partial(make_env, config, 'train'), num_envs=2,
   mode=parallel, lock=config.num_envs > 1, lockfile=config.train_tasks_file,
 )
-task_vec = None
-for env in train_driver._envs:
-  env.randomize_tasks = False
-  if task_vec is None:
-    if config.parallel:
-      task_vec = env.call('get_task_vector')()
-    else:
-      task_vec = env.get_task_vector()
+# task_vec = None
+# for env in train_driver._envs:
+#   env.randomize_tasks = False
+#   if task_vec is None:
+#     if config.parallel:
+#       task_vec = env.call('get_task_vector')()
+#     else:
+#       task_vec = env.get_task_vector()
 train_driver.on_episode(lambda ep: per_episode(ep, mode='train'))
 train_driver.on_step(lambda _: step.increment())
 syncfile = None
@@ -293,7 +293,7 @@ class MyStatsSaver:
     self.stats = defaultdict(list)
 
   def on_episode(self, ep, mode='train'):
-    ep_return = sum(ep['reward'])
+    ep_return = sum(ep['raw_reward'])
     self.stats[self.task].append(ep_return)
 
   def dump(self, path):
@@ -304,19 +304,18 @@ class MyStatsSaver:
       pickle.dump(stats, f)
 my_saver = MyStatsSaver()
 eval_driver.on_episode(my_saver.on_episode)
-env_name = config.task.split('_', 2)[-1]
-env_name = env_name + '-v2'
-if config.parallel:
-  task_set, task_id = eval_driver._envs[0].call('get_task_set', env_name)()
-else:
-  task_set, task_id = eval_driver._envs[0].get_task_set(env_name)
+# env_name = config.task.split('_', 2)[-1]
+# env_name = env_name + '-v2'
+# if config.parallel:
+#   task_set, task_id = eval_driver._envs[0].call('get_task_set', env_name)()
+# else:
+#   task_set, task_id = eval_driver._envs[0].get_task_set(env_name)
 
 def tasks_generator():
-  for x_size in range(0.065, 0.13, 0.005): # 13 vals
-    for y_size in range(0.065, 0.13, 0.005): # 13 vals
-      for mass in range(0.015, 0.1, 0.05): # 17 vals
-        yield {'tool_block': {'mass': mass, 'size': np.array([x_size, y_size, 0.085])}}, \
-          (mass, x_size, y_size)
+  for size in np.arange(0.075, 0.120, 0.005): # 9 vals
+    for mass in np.arange(0.015, 0.050, 0.005): # 7 vals
+      yield {'tool_block': {'mass': mass, 'size': np.array([size, size, 0.085])}}, \
+        (mass, size, size)
 
 for task_id, task in tqdm(tasks_generator(), desc=logdir.stem):
   # curr_task_vec = task_vec.copy()
@@ -329,7 +328,7 @@ for task_id, task in tqdm(tasks_generator(), desc=logdir.stem):
       curr_task = env.set_starting_state(task_id, check_bounds=False)
       # env.set_task_set(env_name, [curr_task])
 
-  eval_driver(eval_policy, episodes=20)
+  eval_driver(eval_policy, episodes=2)
   my_saver.dump(logdir / 'stats.pkl')
 
 # while step < config.steps:
