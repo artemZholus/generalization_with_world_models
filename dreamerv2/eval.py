@@ -226,14 +226,14 @@ train_driver = common.Driver(
   partial(make_env, config, 'train'), num_envs=2,
   mode=parallel, lock=config.num_envs > 1, lockfile=config.train_tasks_file,
 )
-task_vec = None
-for env in train_driver._envs:
-  env.randomize_tasks = False
-  if task_vec is None:
-    if config.parallel:
-      task_vec = env.call('get_task_vector')()
-    else:
-      task_vec = env.get_task_vector()
+# task_vec = None
+# for env in train_driver._envs:
+#   env.randomize_tasks = False
+#   if task_vec is None:
+#     if config.parallel:
+#       task_vec = env.call('get_task_vector')()
+#     else:
+#       task_vec = env.get_task_vector()
 train_driver.on_episode(lambda ep: per_episode(ep, mode='train'))
 train_driver.on_step(lambda _: step.increment())
 syncfile = None
@@ -304,19 +304,18 @@ class MyStatsSaver:
       pickle.dump(stats, f)
 my_saver = MyStatsSaver()
 eval_driver.on_episode(my_saver.on_episode)
-env_name = config.task.split('_', 2)[-1]
-env_name = env_name + '-v2'
-if config.parallel:
-  task_set, task_id = eval_driver._envs[0].call('get_task_set', env_name)()
-else:
-  task_set, task_id = eval_driver._envs[0].get_task_set(env_name)
+# env_name = config.task.split('_', 2)[-1]
+# env_name = env_name + '-v2'
+# if config.parallel:
+#   task_set, task_id = eval_driver._envs[0].call('get_task_set', env_name)()
+# else:
+#   task_set, task_id = eval_driver._envs[0].get_task_set(env_name)
 
 def tasks_generator():
-  for x_size in range(0.065, 0.13, 0.005): # 13 vals
-    for y_size in range(0.065, 0.13, 0.005): # 13 vals
-      for mass in range(0.015, 0.1, 0.05): # 17 vals
-        yield {'tool_block': {'mass': mass, 'size': np.array([x_size, y_size, 0.085])}}, \
-          (mass, x_size, y_size)
+  for size in range(0.075, 0.120, 0.005): # 13 vals
+    for mass in range(0.015, 0.050, 0.005): # 17 vals
+      yield {'tool_block': {'mass': mass, 'size': np.array([size, size, 0.085])}}, \
+        (mass, size, size)
 
 for task_id, task in tqdm(tasks_generator(), desc=logdir.stem):
   # curr_task_vec = task_vec.copy()
@@ -329,7 +328,7 @@ for task_id, task in tqdm(tasks_generator(), desc=logdir.stem):
       curr_task = env.set_starting_state(task_id, check_bounds=False)
       # env.set_task_set(env_name, [curr_task])
 
-  eval_driver(eval_policy, episodes=20)
+  eval_driver(eval_policy, episodes=3)
   my_saver.dump(logdir / 'stats.pkl')
 
 # while step < config.steps:
