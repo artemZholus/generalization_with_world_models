@@ -328,7 +328,7 @@ for task_id, task in tqdm(tasks_generator(), desc=logdir.stem):
       curr_task = env.set_starting_state(task_id, check_bounds=False)
       # env.set_task_set(env_name, [curr_task])
 
-  eval_driver(eval_policy, episodes=2)
+  eval_driver(eval_policy, episodes=config.eval_episodes_per_env)
   my_saver.dump(logdir / 'stats.pkl')
 
 # while step < config.steps:
