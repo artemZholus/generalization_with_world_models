@@ -12,6 +12,7 @@ defaults:
   num_envs: 1
   parallel: False
   iid_eval: False
+  eval_episodes_per_env: 2
   steps: 4e6
   eval_every: 1e5
   eval_eps: 1
