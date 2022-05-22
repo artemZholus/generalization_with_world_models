@@ -170,7 +170,7 @@ def per_episode(ep, mode):
   if not freezed_replay:
     ep_file = replay_.add(ep)
     # ep_file = replay_.add(ep)
-    replays["mt"]._episodes[str(ep_file)] = ep
+    # replays["mt"]._episodes[str(ep_file)] = ep
   logger.scalar(f'{mode}_transitions', replay_.num_transitions)
   logger.scalar(f'{mode}_return', score)
   logger.scalar(f'{mode}_raw_return', raw_score)
