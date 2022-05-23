@@ -368,7 +368,7 @@ cw_dreamer:
   rssm.discrete: False
 
 cw_training:
-  steps: 2e6
+  steps: 1e6
   eval_every: 1e4
   log_every: 1e3
   prefill: 5000
