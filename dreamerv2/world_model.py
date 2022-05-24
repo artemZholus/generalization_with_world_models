@@ -339,7 +339,7 @@ class CausalWorldModel(WorldModel):
     super().__init__(step, config)
     shape = config.image_size + (config.img_channels,)
     self.rssm = common.DualReasoner(**config.rssm,
-      subj_kws=config.subj_rssm, cond_kws=config.cond_kws, obj_kws=config.obj_rssm,
+      subj_kws=config.subj_rssm, obj_kws=config.obj_rssm,
       feature_sets=config.feature_sets,
     )
     self.encoder = common.DualConvEncoder(config.subj_encoder, config.obj_encoder, config.obj_features)
@@ -374,10 +374,8 @@ class CausalWorldModel(WorldModel):
   def mut_inf(self, post, prior):
     metrics = {
       'mi_q_subj': self.rssm.mut_inf(post, kind='subj'),
-      'mi_q_util': self.rssm.mut_inf(post, kind='util'),
       'mi_q_obj': self.rssm.mut_inf(post, kind='obj'),
       'mi_p_subj': self.rssm.mut_inf(prior, kind='subj'),
-      'mi_p_util': self.rssm.mut_inf(prior, kind='util'),
       'mi_p_obj': self.rssm.mut_inf(prior, kind='obj'),
     }
     return metrics
@@ -393,7 +391,6 @@ class CausalWorldModel(WorldModel):
     model_loss, post, outs, metrics = super().loss(data, state, full=full)
     metrics['model_subj_kl'] = outs['kl']['subj'].mean()
     metrics['model_obj_kl'] = outs['kl']['obj'].mean()
-    metrics['model_util_kl'] = outs['kl']['util'].mean()
     prior_dist = self.rssm.get_dist(outs['prior'])
     post_dist = self.rssm.get_dist(outs['post'])
     #if full:
@@ -401,8 +398,6 @@ class CausalWorldModel(WorldModel):
     metrics['post_subj_ent'] = post_dist['subj'].entropy().mean()
     metrics['prior_obj_ent'] = prior_dist['obj'].entropy().mean()
     metrics['post_obj_ent'] = post_dist['obj'].entropy().mean()
-    metrics['post_util_ent'] = post_dist['util'].entropy().mean()
-    metrics['prior_util_ent'] = prior_dist['util'].entropy().mean()
     return model_loss, post, outs, metrics
 
   @tf.function

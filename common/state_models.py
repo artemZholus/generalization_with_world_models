@@ -516,21 +516,9 @@ class DualReasoner(RSSM):
     # these are base kwargs
     stoch=30, deter=200, hidden=200, discrete=False, act=tf.nn.elu, std_act='softplus', min_std=0.1,
     # per layer specific kwargs
-    cond_kws=None, subj_kws=None, obj_kws=None,
+    subj_kws=None, obj_kws=None,
     feature_sets=None
   ):
-    # cond_stoch=50,
-    if cond_kws is None:
-      cond_kws = {}
-    else:
-      cond_kws = dict(**cond_kws)
-    cond_kws = dict(cond_kws)
-    cond_kws['hidden'] = cond_kws.get('hidden', hidden)
-    cond_kws['act'] = cond_kws.get('act', act)
-    cond_kws['discrete'] = cond_kws.get('discrete', discrete)
-    cond_kws['layers'] = cond_kws.get('layers', 2)
-    cond_kws['size'] = cond_kws.get('size', 50) # 50 is default cond model stoch size
-
     if subj_kws is None:
       subj_kws = {}
     else:
@@ -565,7 +553,6 @@ class DualReasoner(RSSM):
     self.feature_sets = [] if feature_sets is None else feature_sets
     self._cast = lambda x: tf.cast(x, prec.global_policy().compute_dtype)
     self.subj_reasoner = RSSM(**subj_kws)
-    self.condition_model = common.ConditionModel(**cond_kws)
     self.obj_reasoner = ReasonerMLP(**obj_kws)
 
   @tf.function
@@ -588,13 +575,8 @@ class DualReasoner(RSSM):
                                                prev_action=action,
                                                sample=sample
     )
-    # util inference
-    post_update_util = tf.concat(
-      [self.obj_reasoner.get_feat(post_obj), 
-       self.subj_reasoner.get_feat(post_subj)], -1)
-    post_util = self.condition_model.obs_step(post_update_util, sample=sample)
     
-    return {'subj': post_subj, 'obj': post_obj, 'util': post_util}
+    return {'subj': post_subj, 'obj': post_obj}
 
   def mut_inf(self, sample, kind='obj'):
     NUM_SAMPLES = 1
@@ -608,8 +590,6 @@ class DualReasoner(RSSM):
       expand_dist = self.obj_reasoner.get_dist({'mean': mu, 'std': sigma})
     elif kind == 'subj':
       expand_dist = self.subj_reasoner.get_dist({'mean': mu, 'std': sigma})
-    elif kind == 'util':
-      expand_dist = self.condition_model.get_dist({'mean': mu, 'std': sigma})
     stoch = tf.expand_dims(stoch, 2)
     prob = expand_dist.log_prob(stoch)
     marginal_prob = prob.logsumexp(2) - math.log(prob.shape[2])
@@ -628,20 +608,17 @@ class DualReasoner(RSSM):
                                              prev_action=action,
                                              #curr_state=subj_curr_state,
                                              sample=sample)
-    # util imagination
+    # obj imagination
     prior_subj_feat = self.subj_reasoner.get_feat(prior_subj)
-    # prior_update_util = tf.stop_gradient(prior_update_util)
     if task_vec is not None:
       task_vec = self._cast(task_vec)
-      prior_update_util = tf.concat([prior_subj_feat, task_vec], -1)
+      prior_update_obj = tf.concat([prior_subj_feat, task_vec], -1)
     else:
-      prior_update_util = prior_subj_feat
-    prior_util = self.condition_model.img_step(prior_update_util, sample=sample)
-    prior_update_obj = self.condition_model.get_feat(prior_util)
+      prior_update_obj = prior_subj_feat
     prior_obj = self.obj_reasoner.img_step(prev_state=prev_obj,
                                            prior_update=prior_update_obj,
                                            sample=sample)
-    return {'subj': prior_subj, 'obj': prior_obj, 'util': prior_util}
+    return {'subj': prior_subj, 'obj': prior_obj}
 
   @tf.function
   def img_step(self, state, action, task_vec=None, sample=True):
@@ -656,8 +633,6 @@ class DualReasoner(RSSM):
             feat_vec = self.subj_reasoner.get_feat(state['subj'])
           elif feat == 'obj':
             feat_vec = self.obj_reasoner.get_feat(state['obj'])
-          elif feat == 'util':
-            feat_vec = self.condition_model.get_feat(state['util'])
           elif feat == 'task':
             feat_vec = self._cast(task_vec)
           elif feat == 'obj_gt':
@@ -666,14 +641,12 @@ class DualReasoner(RSSM):
         return tf.concat(features, -1)
     subj_feat = self.subj_reasoner.get_feat(state['subj'])
     obj_feat = self.obj_reasoner.get_feat(state['obj'])
-    util_feat = self.condition_model.get_feat(state['util'])
-    return tf.concat([subj_feat, util_feat, obj_feat], -1)
+    return tf.concat([subj_feat, obj_feat], -1)
 
   def get_dist(self, state):
     subj_dist = self.subj_reasoner.get_dist(state['subj'])
     obj_dist = self.obj_reasoner.get_dist(state['obj'])
-    util = self.condition_model.get_dist(state['util'])
-    return {'subj': subj_dist, 'obj': obj_dist, 'util': util}
+    return {'subj': subj_dist, 'obj': obj_dist}
 
   @tf.function
   def obs_step(self, state, action, emb, task_vec=None, full=True, sample=True):
@@ -688,8 +661,7 @@ class DualReasoner(RSSM):
   def initial(self, batch_size):
     return {
       'obj': self.obj_reasoner.initial(batch_size),
-      'subj': self.subj_reasoner.initial(batch_size),
-      'util': self.condition_model.initial(batch_size)
+      'subj': self.subj_reasoner.initial(batch_size)
     }
 
   @tf.function
@@ -733,11 +705,9 @@ class DualReasoner(RSSM):
     subj_loss, subj_value = self.subj_reasoner.kl_loss(post['subj'], prior['subj'], **kwargs.get('subj', {}))
     # obj KL
     obj_loss, obj_value = self.obj_reasoner.kl_loss(post['obj'], prior['obj'], **kwargs.get('obj', {}))
-    # util KL
-    util_loss, util_value = self.condition_model.kl_loss(post['util'], prior['util'], **kwargs.get('util', {}))
     # losses and values
-    loss = {'subj': subj_loss, 'obj': obj_loss, 'util': util_loss}
-    value = {'subj': subj_value, 'obj': obj_value, 'util': util_value}
+    loss = {'subj': subj_loss, 'obj': obj_loss}
+    value = {'subj': subj_value, 'obj': obj_value}
     return loss, value
 
   def deter_kl_loss(self, post, prior, **kwargs):
@@ -751,11 +721,9 @@ class DualReasoner(RSSM):
       prior['obj']['curr_state_prio']['deter']
     ) ** 2).sum(-1).mean()
     deter_kl = tf.cast(deter_kl, tf.float32)
-    # util KL
-    util_loss, util_value = self.condition_model.kl_loss(post['util'], prior['util'], **kwargs.get('util', {}))
     # losses and values
-    loss = {'subj': subj_loss, 'obj': obj_loss, 'obj_deter': deter_kl, 'util': util_loss}
-    value = {'subj': subj_value, 'obj': obj_value, 'obj_deter': deter_kl, 'util': util_value}
+    loss = {'subj': subj_loss, 'obj': obj_loss, 'obj_deter': deter_kl}
+    value = {'subj': subj_value, 'obj': obj_value, 'obj_deter': deter_kl}
     return loss, value
 
 

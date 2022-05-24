@@ -342,9 +342,9 @@ lighter_agent:
 cw_cema:
   world_model: causal
   grad_heads: [obj_image, subj_image, reward]
-  feature_sets.policy: [task, subj, util, obj]
-  feature_sets.value: [subj, util, obj]
-  feature_sets.reward: [util, obj]
+  feature_sets.policy: [task, subj, obj]
+  feature_sets.value: [subj, obj]
+  feature_sets.reward: [subj, obj]
   rssm: {hidden: 200, deter: 200, stoch: 30, discrete: False, act: elu, std_act: sigmoid2, min_std: 0.1}
   subj_encoder: {depth: 32, act: elu, kernels: [4, 4, 4, 4], groups: 1, keys: [subj_image], rect: False}
   subj_rssm: {hidden: 200, deter: 200, stoch: 30, discrete: False, act: elu, std_act: sigmoid2, min_std: 0.1}
