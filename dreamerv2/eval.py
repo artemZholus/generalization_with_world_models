@@ -313,7 +313,7 @@ eval_driver.on_episode(my_saver.on_episode)
 
 def tasks_generator():
   for size in range(0.075, 0.120, 0.005): # 13 vals
-    for mass in range(0.015, 0.050, 0.005): # 17 vals
+    for mass in range(0.015, 0.105, 0.005): # 17 vals
       yield {'tool_block': {'mass': mass, 'size': np.array([size, size, 0.085])}}, \
         (mass, size, size)
 
