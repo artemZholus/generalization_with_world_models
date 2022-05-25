@@ -312,10 +312,24 @@ eval_driver.on_episode(my_saver.on_episode)
 #   task_set, task_id = eval_driver._envs[0].get_task_set(env_name)
 
 def tasks_generator():
-  for size in range(0.075, 0.120, 0.005): # 13 vals
-    for mass in range(0.015, 0.105, 0.005): # 17 vals
-      yield {'tool_block': {'mass': mass, 'size': np.array([size, size, 0.085])}}, \
-        (mass, size, size)
+  x_mean = 0.95
+  y_mean = 0.95
+  mass_mean = 0.045
+
+  for y_size in np.linspace(0.075, 0.115, 10): # 10 vals
+    for mass in np.linspace(0.015, 0.100, 10): # 10 vals
+      yield {'tool_block': {'mass': mass, 'size': np.array([x_mean, y_size, 0.085])}}, \
+        (mass, x_mean, y_size)
+
+  for x_size in np.linspace(0.075, 0.115, 10): # 10 vals
+    for mass in np.linspace(0.015, 0.100, 10): # 10 vals
+      yield {'tool_block': {'mass': mass, 'size': np.array([x_size, y_mean, 0.085])}}, \
+        (mass, x_size, y_mean)
+
+  for x_size in np.linspace(0.075, 0.115, 10): # 13 vals
+    for y_size in np.linspace(0.075, 0.115, 10): # 13 vals
+      yield {'tool_block': {'mass': mass_mean, 'size': np.array([x_size, y_size, 0.085])}}, \
+        (mass_mean, x_size, y_size)
 
 for task_id, task in tqdm(tasks_generator(), desc=logdir.stem):
   # curr_task_vec = task_vec.copy()
