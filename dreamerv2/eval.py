@@ -167,7 +167,6 @@ def per_episode(ep, mode):
   print(f'{mode.title()} episode has {length} steps and return {score:.1f}.')
   # replay_ = dict(train=train_replay, eval=eval_replay)[mode if 'eval' not in mode else 'eval']
   replay_ = replays[mode]
-  ep_file = replay_.add(ep)
   if not freezed_replay:
     ep_file = replay_.add(ep)
     # replays["mt"]._episodes[str(ep_file)] = ep
