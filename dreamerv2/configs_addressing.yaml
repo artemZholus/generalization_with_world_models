@@ -12,6 +12,7 @@ defaults:
   num_envs: 1
   parallel: False
   iid_eval: False
+  eval_episodes_per_env: 2
   steps: 4e6
   eval_every: 1e5
   eval_eps: 1
@@ -370,7 +371,7 @@ cw_dreamer:
   rssm.discrete: False
 
 cw_training:
-  steps: 2e6
+  steps: 1e6
   eval_every: 1e4
   log_every: 1e3
   prefill: 5000
@@ -384,6 +385,7 @@ cw_training:
   critic_opt.wd: 0.000001
   actor_ent: 1e-5
   actor_grad: dynamics
+  loss_scales.kl: 2.0
 
 causal:
   segmentation: True
