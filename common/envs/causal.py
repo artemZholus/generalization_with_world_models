@@ -222,6 +222,9 @@ class CausalWorld:
     obs['task_vector'] = self.get_task_vector()
     return obs
 
+  def set_starting_state(self, task_id, check_bounds=False):
+    self._env.set_starting_state(task_id, check_bounds)
+
   def render(self):
     full_obs, obj_obs, full_segm = self._env.render_with_masks()
     full_mask = self.convert_segm(full_segm, 'subj')

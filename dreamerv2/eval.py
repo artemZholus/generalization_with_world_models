@@ -169,8 +169,8 @@ def per_episode(ep, mode):
   replay_ = replays[mode]
   ep_file = replay_.add(ep)
   if not freezed_replay:
-    # ep_file = replay_.add(ep)
-    replays["mt"]._episodes[str(ep_file)] = ep
+    ep_file = replay_.add(ep)
+    # replays["mt"]._episodes[str(ep_file)] = ep
   logger.scalar(f'{mode}_transitions', replay_.num_transitions)
   logger.scalar(f'{mode}_return', score)
   logger.scalar(f'{mode}_raw_return', raw_score)
@@ -293,7 +293,7 @@ class MyStatsSaver:
     self.stats = defaultdict(list)
 
   def on_episode(self, ep, mode='train'):
-    ep_return = sum(ep['reward'])
+    ep_return = sum(ep['raw_reward'])
     self.stats[self.task].append(ep_return)
 
   def dump(self, path):
@@ -328,7 +328,7 @@ for task_id, task in tqdm(tasks_generator(), desc=logdir.stem):
       curr_task = env.set_starting_state(task_id, check_bounds=False)
       # env.set_task_set(env_name, [curr_task])
 
-  eval_driver(eval_policy, episodes=3)
+  eval_driver(eval_policy, episodes=config.eval_episodes_per_env)
   my_saver.dump(logdir / 'stats.pkl')
 
 # while step < config.steps:
