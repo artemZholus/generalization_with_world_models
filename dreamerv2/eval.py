@@ -311,8 +311,8 @@ eval_driver.on_episode(my_saver.on_episode)
 #   task_set, task_id = eval_driver._envs[0].get_task_set(env_name)
 
 def tasks_generator():
-  x_mean = 0.95
-  y_mean = 0.95
+  x_mean = 0.095
+  y_mean = 0.095
   mass_mean = 0.045
 
   for y_size in np.linspace(0.075, 0.115, 10): # 10 vals
