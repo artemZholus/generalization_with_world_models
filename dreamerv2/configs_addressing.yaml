@@ -14,6 +14,7 @@ defaults:
   iid_eval: False
   eval_episodes_total: 2
   eval_kinds: ['x_size', 'y_size', 'mass']
+  stats_file: 'stats.pkl'
   steps: 4e6
   eval_every: 1e5
   eval_eps: 1

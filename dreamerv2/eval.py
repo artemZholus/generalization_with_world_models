@@ -317,7 +317,7 @@ for task_id, task in tqdm(tasks_generator(kind=config.eval_kinds), desc=logdir.s
       # env.set_task_set(env_name, [curr_task])
 
   eval_driver(eval_policy, episodes=config.eval_episodes_total)
-  my_saver.dump(logdir / 'stats.pkl')
+  my_saver.dump(logdir / config.stats_file)
 
 # while step < config.steps:
 #   logger.write()
