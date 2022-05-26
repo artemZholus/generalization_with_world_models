@@ -186,31 +186,6 @@ def per_episode(ep, mode):
     f'eval_env_step': replays["eval"].num_transitions,
     f'{config.logging.env_name}/{prefix}_length': length
   }
-  # if config.logging.wdb:
-  #   wandb.log(summ)
-  should = {'train': should_video_train, 'eval': should_video_eval}[mode]
-  if should(step):
-    logger.video(f'{mode}_policy', ep['image'])
-    # if should_wdb_video(step) and config.logging.wdb:
-    #   video = np.transpose(ep['image'], (0, 3, 1, 2))
-    #   videos = []
-    #   rows = video.shape[1] // 3
-    #   for row in range(rows):
-    #     videos.append(video[:, row * 3: (row + 1) * 3])
-    #   video = np.concatenate(videos, 3)
-    #   # if config.logging.wdb:
-    #   #   wandb.log({f"{mode}_policy": wandb.Video(video, fps=30, format="gif")})
-    #   # TODO: save video to gif
-    #   video = np.transpose(ep['segmentation'], (0, 3, 1, 2)).astype(np.float)
-    #   video *= 100
-    #   videos = []
-    #   rows = video.shape[1]
-    #   for row in range(rows):
-    #     videos.append(video[:, row: row + 1])
-    #   video = np.concatenate(videos, 3)
-    #   # if config.logging.wdb:
-    #   #   wandb.log({f"{mode}_segm_policy": wandb.Video(video, fps=30, format="gif")})
-    #   # TODO: save video to gif
   logger.write()
 
 print('Create envs.')
@@ -245,7 +220,7 @@ eval_driver = common.Driver(
 )
 for env in eval_driver._envs:
   env.randomize_tasks = False
-eval_driver.on_episode(lambda ep: per_episode(ep, mode='eval'))
+
 kind = 'policy'
 def ev_per_ep(ep, mode='eval'):
   global kind
@@ -254,6 +229,7 @@ def ev_per_ep(ep, mode='eval'):
   elif kind == 'random':
     per_episode(ep, mode='rand_eval')
 eval_driver.on_episode(ev_per_ep)
+
 prefill = max(0, config.prefill - replays["train"].total_steps)
 random_agent = common.RandomAgent(action_space)
 if prefill:
@@ -271,10 +247,6 @@ freezed_replay = True
 print('Create agent.')
 
 train_dataset = iter(replays["train"].dataset(**config.dataset))
-eval_dataset = iter(replays["eval"].dataset(**config.dataset))
-if tronev:
-  train_rand_dataset = iter(replays["eval_rand"].dataset(**config.dataset))
-# eval_dataset = iter(eval_replay.dataset(**config.dataset))
 
 agnt = agent.Agent(config, logger, action_space, step, train_dataset)
 print('Agent created')
@@ -310,27 +282,30 @@ eval_driver.on_episode(my_saver.on_episode)
 # else:
 #   task_set, task_id = eval_driver._envs[0].get_task_set(env_name)
 
-def tasks_generator():
-  x_mean = 0.095
-  y_mean = 0.095
-  mass_mean = 0.045
+def tasks_generator(kind=['mass', 'x_size', 'y_size']):
+  x_mean = 0.085
+  y_mean = 0.085
+  mass_mean = 0.03
 
-  for y_size in np.linspace(0.075, 0.115, 10): # 10 vals
-    for mass in np.linspace(0.015, 0.100, 10): # 10 vals
-      yield {'tool_block': {'mass': mass, 'size': np.array([x_mean, y_size, 0.085])}}, \
-        (mass, x_mean, y_size)
+  if 'x_size' in kind:
+    for y_size in np.linspace(0.075, 0.115, 10): # 10 vals
+      for mass in np.linspace(0.015, 0.100, 10): # 10 vals
+        yield {'tool_block': {'mass': mass, 'size': np.array([x_mean, y_size, 0.085])}}, \
+          (mass, x_mean, y_size)
 
-  for x_size in np.linspace(0.075, 0.115, 10): # 10 vals
-    for mass in np.linspace(0.015, 0.100, 10): # 10 vals
-      yield {'tool_block': {'mass': mass, 'size': np.array([x_size, y_mean, 0.085])}}, \
-        (mass, x_size, y_mean)
+  if 'y_size' in kind:
+    for x_size in np.linspace(0.075, 0.115, 10): # 10 vals
+      for mass in np.linspace(0.015, 0.100, 10): # 10 vals
+        yield {'tool_block': {'mass': mass, 'size': np.array([x_size, y_mean, 0.085])}}, \
+          (mass, x_size, y_mean)
 
-  for x_size in np.linspace(0.075, 0.115, 10): # 13 vals
-    for y_size in np.linspace(0.075, 0.115, 10): # 13 vals
-      yield {'tool_block': {'mass': mass_mean, 'size': np.array([x_size, y_size, 0.085])}}, \
-        (mass_mean, x_size, y_size)
+  if 'mass' in kind:
+    for x_size in np.linspace(0.075, 0.115, 10): # 13 vals
+      for y_size in np.linspace(0.075, 0.115, 10): # 13 vals
+        yield {'tool_block': {'mass': mass_mean, 'size': np.array([x_size, y_size, 0.085])}}, \
+          (mass_mean, x_size, y_size)
 
-for task_id, task in tqdm(tasks_generator(), desc=logdir.stem):
+for task_id, task in tqdm(tasks_generator(kind=config.eval_kinds), desc=logdir.stem):
   # curr_task_vec = task_vec.copy()
   my_saver.task = task
   for env in eval_driver._envs:
@@ -341,7 +316,7 @@ for task_id, task in tqdm(tasks_generator(), desc=logdir.stem):
       curr_task = env.set_starting_state(task_id, check_bounds=False)
       # env.set_task_set(env_name, [curr_task])
 
-  eval_driver(eval_policy, episodes=config.eval_episodes_per_env)
+  eval_driver(eval_policy, episodes=config.eval_episodes_total)
   my_saver.dump(logdir / 'stats.pkl')
 
 # while step < config.steps:
