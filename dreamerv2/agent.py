@@ -4,7 +4,7 @@ from tensorflow.keras import mixed_precision as prec
 import elements
 import common
 import expl
-import world_model
+import world_models
 
 
 class Agent(common.Module):
@@ -22,10 +22,10 @@ class Agent(common.Module):
       self.step = tf.Variable(int(self._counter), tf.int64)
     self._dataset = dataset
     self.wm = dict(
-      dual=lambda: world_model.DualWorldModel(self.step, config),
-      mutual=lambda: world_model.MutualWorldModel(self.step, config),
-      dreamer=lambda: world_model.DreamerWorldModel(self.step, config),
-      causal=lambda: world_model.CausalWorldModel(self.step, config),
+      cema=lambda: world_models.CEMA(self.step, config),
+      cema_ib=lambda: world_models.CEMA_IB(self.step, config),
+      dual_no_cond=lambda: world_models.DualNoCond(self.step, config),
+      dreamer=lambda: world_models.Dreamer(self.step, config),
     )[config.world_model]()
     if config.zero_shot:
       self._zero_shot_ac = ActorCritic(config, self.step, self._num_act) 
@@ -95,9 +95,9 @@ class Agent(common.Module):
     print('calling train agent')
     metrics = {}
     if do_wm_step:
-      state, outputs, mets = self.wm.train(data, state, full=full)
+      outputs, mets = self.wm.train(data, state, full=full)
     else:
-      state, outputs, mets = self.wm.wm_loss(data, state)
+      outputs, mets = self.wm.wm_loss(data, state)
     metrics.update(mets)
     start = outputs['post']
     if self.config.pred_discount:  # Last step could be terminal.
@@ -119,7 +119,7 @@ class Agent(common.Module):
         outputs = tf.nest.map_structure(lambda x: x[:, :-1], outputs)
       mets = self._expl_behavior.train(start, outputs, data)[-1]
       metrics.update({'expl_' + key: value for key, value in mets.items()})
-    return state, metrics
+    return metrics
 
   @tf.function
   def report(self, data):
