@@ -29,14 +29,14 @@ class TrainProposal:
     def train(self, agnt):
       metrics = {}
       self.before_train()
-      batch, do_wm_step, do_ac_step, full = self.propose_batch(agnt, metrics=metrics)
+      batch, do_wm_step, do_ac_step = self.propose_batch(agnt, metrics=metrics)
       with self.timed.action('train_agent'):
-        _, mets = agnt.train(batch, do_wm_step=do_wm_step, do_ac_step=do_ac_step, full=full)
+        _, mets = agnt.train(batch, do_wm_step=do_wm_step, do_ac_step=do_ac_step)
       mets.update(metrics)
       return _, mets
 
     def propose_batch(self, agnt, metrics):
-      return next(self.dataset), not self.train_ac_only, not self.train_wm_only, True
+      return next(self.dataset), not self.train_ac_only, not self.train_wm_only
 
     def before_train(self):
       pass
