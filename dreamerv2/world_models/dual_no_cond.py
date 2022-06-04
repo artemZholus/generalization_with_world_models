@@ -1,3 +1,4 @@
+import tensorflow as tf
 from common.state_models import DualNoCond
 from common.nets import DualConvEncoder, ConvDecoder, MLP
 

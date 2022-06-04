@@ -39,6 +39,7 @@ class CEMA_IB(WM):
       *self.heads.values()
     ]
 
+  @tf.function
   def preprocess(self, obs):
     obs = super().preprocess(obs)
     if self.config.segmentation:
