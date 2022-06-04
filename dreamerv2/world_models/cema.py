@@ -1,3 +1,5 @@
+import tensorflow as tf
+
 from common.state_models import Influencer
 from common.nets import DualConvEncoder, ConvDecoder, MLP
 
@@ -34,6 +36,7 @@ class CEMA(WM):
       *self.heads.values()
     ]
 
+  @tf.function
   def preprocess(self, obs):
     obs = super().preprocess(obs)
     if self.config.segmentation:
@@ -76,3 +79,12 @@ class CEMA(WM):
     losses = {f'{layer}_kl': loss for layer, loss in loss.items()}
     values = {'kl': value}
     return values, losses
+
+  @tf.function
+  def video_pred(self, data):
+    pred =  {
+      'subj': super().video_pred(data, img_key='subj_image')['openl']
+    }
+    if not self.config.obj_features == 'gt':
+      pred['obj'] = super().video_pred(data, img_key='obj_image')['openl']
+    return pred

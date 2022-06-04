@@ -53,7 +53,7 @@ class CEMA_IB(WM):
     print('calling WM train')
     with tf.GradientTape() as model_tape:
       loss_inputs = self.loss_inputs(data, state)
-      model_loss, losses, values = self.loss(loss_inputs)
+      model_loss, losses, values = self.loss(**loss_inputs)
       model_loss += self.sm_loss(
         tf.stop_gradient(loss_inputs['embed']['obj']), 
         loss_inputs['post']['util']['stoch']
@@ -108,3 +108,12 @@ class CEMA_IB(WM):
       'mi_p_obj': self.rssm.mut_inf(prior, kind='obj'),
     }
     return metrics
+
+  @tf.function
+  def video_pred(self, data):
+    pred =  {
+      'subj': super().video_pred(data, img_key='subj_image')['openl']
+    }
+    if not self.config.obj_features == 'gt':
+      pred['obj'] = super().video_pred(data, img_key='obj_image')['openl']
+    return pred

@@ -343,7 +343,7 @@ lighter_agent:
   # cond_kws.discrete: 16
 
 cw_cema:
-  world_model: causal
+  world_model: cema
   grad_heads: [obj_image, subj_image, reward]
   feature_sets.policy: [task, subj, util, obj]
   feature_sets.value: [subj, util, obj]

@@ -1,7 +1,10 @@
+import random
+
 import tensorflow as tf
 from tensorflow.keras import mixed_precision as prec
 
 from common.tfutils import Module, Optimizer
+from common.other import static_scan
 
 class WM(Module):
 
@@ -19,7 +22,7 @@ class WM(Module):
     print('calling WM train')
     with tf.GradientTape() as model_tape:
       loss_inputs = self.loss_inputs(data, state)
-      model_loss, losses, values = self.loss(loss_inputs)
+      model_loss, losses, values = self.loss(**loss_inputs)
       print()
     metrics = self.gather_metrics(losses, values, **loss_inputs)
     metrics.update(self.model_opt(model_tape, model_loss, self.modules))
@@ -90,7 +93,7 @@ class WM(Module):
     return model_loss, losses, values
 
   def imagine(self, policy, start, horizon, task_vec=None, obj_gt=None):
-    print('calling wm imagine')
+    print('calling WM imagine')
     flatten = lambda x: x.reshape([-1] + list(x.shape[2:]))
     start = tf.nest.map_structure(flatten, start)
     if task_vec is not None:
@@ -111,7 +114,14 @@ class WM(Module):
     action = policy(pfeat).mode()
     succs, pfeats, vfeats, rfeats, actions = static_scan(
         step, tf.range(horizon), (start, pfeat, vfeat, rfeat, action))
-    states = {k: tf.concat([
+    if isinstance(random.choice(list(succs.values())), dict):
+      states = {}
+      for k_out, v_out in succs.items():
+        states[k_out] = {}
+        for k_in, v_in in v_out.items():
+          states[k_out][k_in] = tf.concat([start[k_out][k_in][None], v_in[:-1]], 0)
+    else:
+      states = {k: tf.concat([
         start[k][None], v[:-1]], 0) for k, v in succs.items()}
     if 'discount' in self.heads:
       discount = self.heads['discount'](rfeats).mean()
