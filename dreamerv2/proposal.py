@@ -31,9 +31,9 @@ class TrainProposal:
       self.before_train()
       batch, do_wm_step, do_ac_step = self.propose_batch(agnt, metrics=metrics)
       with self.timed.action('train_agent'):
-        _, mets = agnt.train(batch, do_wm_step=do_wm_step, do_ac_step=do_ac_step)
+        mets = agnt.train(batch, do_wm_step=do_wm_step, do_ac_step=do_ac_step)
       mets.update(metrics)
-      return _, mets
+      return mets
 
     def propose_batch(self, agnt, metrics):
       return next(self.dataset), not self.train_ac_only, not self.train_wm_only
