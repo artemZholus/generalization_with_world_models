@@ -356,8 +356,7 @@ else:
 def train_step(tran):
   if should_train(step):
     for _ in range(config.train_steps):
-      _, mets = batch_proposal.train(agnt)
-      # _, mets = agnt.train(next(train_dataset))
+      mets = batch_proposal.train(agnt)
       [metrics[key].append(value) for key, value in mets.items()]
   if should_log(step):
     average = {f'agent/{k}': np.array(v, np.float64).mean() for k, v in metrics.items()}
