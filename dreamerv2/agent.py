@@ -24,7 +24,7 @@ class Agent(common.Module):
     self.wm = dict(
       cema=lambda: world_models.CEMA(self.step, config),
       cema_ib=lambda: world_models.CEMA_IB(self.step, config),
-      dual_no_cond=lambda: world_models.DualNoCond(self.step, config),
+      dual_no_cond=lambda: world_models.DualWMNoCond(self.step, config),
       dreamer=lambda: world_models.Dreamer(self.step, config),
     )[config.world_model]()
     if config.zero_shot:

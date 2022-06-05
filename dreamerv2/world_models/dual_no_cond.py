@@ -4,7 +4,7 @@ from common.nets import DualConvEncoder, ConvDecoder, MLP
 
 from dreamerv2.world_models.wm import WM
 
-class DualNoCond(WM):
+class DualWMNoCond(WM):
 
   def __init__(self, step, config):
     super().__init__(step, config)
