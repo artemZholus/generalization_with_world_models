@@ -29,12 +29,12 @@ class DreamerGibbs(WM):
     return metrics
 
   def kl_loss(self, post, prior, **kwargs):
-    print('calling KL loss DreamerGibbs')
+    print('kl_loss DreamerGibbs')
     value, loss = super().kl_loss(post, prior)
     value = {'kl': value}
     loss = {'kl': loss}
-    print('DreamerGibbs', value)
-    print('DreamerGibbs', loss)
+    print('DreamerGibbs value', value)
+    print('DreamerGibbs loss', loss)
     return value, loss
 
   def mut_inf(self, post, prior):

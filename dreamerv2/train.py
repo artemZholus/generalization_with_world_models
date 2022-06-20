@@ -69,7 +69,7 @@ config = config.update(
     log_every=config.log_every // config.action_repeat,
     time_limit=config.time_limit // config.action_repeat,
     prefill=config.prefill // config.action_repeat)
-if config.segmentation and config.world_model == 'dreamer':
+if config.segmentation and (config.world_model == 'dreamer' or config.world_model == 'dreamer_gibbs'):
   config = config.update(img_channels=config.img_channels * 2)
 
 tf.config.experimental_run_functions_eagerly(not config.jit)
