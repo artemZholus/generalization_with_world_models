@@ -389,6 +389,18 @@ cw_dreamer:
   rssm.deter: 200
   rssm.discrete: False
 
+cw_dreamer_gibbs:
+  world_model: dreamer_gibbs
+  grad_heads: [image, reward]
+  encoder.groups: 1
+  encoder.depth: 32
+  kl.free: 1.0
+  kl.balance: 0.8
+  loss_scales.kl: 2.0
+  rssm.hidden: 200
+  rssm.deter: 200
+  rssm.discrete: False
+
 cw_training:
   steps: 2e6
   eval_every: 1e4
