@@ -27,6 +27,7 @@ class Agent(common.Module):
       dual_no_cond=lambda: world_models.DualWMNoCond(self.step, config),
       dreamer=lambda: world_models.Dreamer(self.step, config),
       dreamer_gibbs=lambda: world_models.DreamerGibbs(self.step, config),
+      dual_gibbs=lambda: world_models.DualWMGibbs(self.step, config),
     )[config.world_model]()
     if config.zero_shot:
       self._zero_shot_ac = ActorCritic(config, self.step, self._num_act) 
