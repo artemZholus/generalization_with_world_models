@@ -53,3 +53,41 @@ class DualGibbs(DualNoCond):
     self.subj_reasoner = RSSM(**subj_kws)
     self.obj_reasoner = ReasonerMLP(**obj_kws)
     self._use_task_vector = use_task_vector
+
+
+  @tf.function
+  def obs_step(self, state, action, emb, task_vec=None, sample=True):
+    prior = self.bottom_up_step(state, action,
+                                task_vec=task_vec,
+                                sample=sample)
+    print('DualGibbs prior', prior)
+    post = self.top_down_step(state, emb['obj'], emb['subj'],
+                              action=action, prior_state=prior,
+                              sample=sample)
+    print('DualGibbs post', post)
+    # post = self.top_down_step(state, emb['obj'], emb['subj'],
+    #                           action=action, prior_state=post,
+    #                           sample=sample)
+    return post, prior
+
+  @tf.function
+  def top_down_step(self, prev_state, emb_obj=None, emb_subj=None, action=None, prior_state=None, sample=True):
+    prev_subj, prev_obj = prev_state['subj'], prev_state['obj']
+    if prior_state is not None:
+      prior_subj, prior_obj = prior_state['subj'], prior_state['obj']
+    else:
+      prior_subj, prior_obj = None, None
+    # obj inference
+    post_update_obj = emb_obj
+    post_obj = self.obj_reasoner.obs_step(prev_state=prev_obj,
+                                          current_state=prior_obj,
+                                          post_update=post_update_obj,
+                                          sample=sample)
+    # subj inference
+    post_update_subj = emb_subj
+    post_subj, _ = self.subj_reasoner.obs_step(prev_state=prev_subj,
+                                               embed=post_update_subj,
+                                               prev_action=action,
+                                               sample=sample
+    )
+    return {'subj': post_subj, 'obj': post_obj}
