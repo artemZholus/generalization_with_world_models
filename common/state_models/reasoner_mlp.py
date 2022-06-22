@@ -66,14 +66,17 @@ class ReasonerMLP(RSSM):
     return prior
 
   @tf.function
-  def obs_step(self, prev_state, current_state, post_update, task_vec=None, sample=True):
+  def obs_step(self, prev_state, current_state_obj, post_update, current_state_subj, task_vec=None, sample=True):
     post_update = self._cast(post_update)
 
+    print('ReasonerMLP post_update', post_update)
     x = self.get('obs_out', tfkl.Dense, self._hidden, self._act)(post_update)
+    print('ReasonerMLP x', x)
     stats = self._suff_stats_layer('obs_dist', x)
     dist = self.get_dist(stats)
     stoch = dist.sample() if sample else dist.mode()
-    latent = {'stoch': stoch, 'deter': current_state['deter'], 'out': x, **stats}
+    print('ReasonerMLP stoch', stoch)
+    latent = {'stoch': stoch, 'deter': current_state_obj['deter'], 'out': x, **stats}
     return latent
 
   @tf.function

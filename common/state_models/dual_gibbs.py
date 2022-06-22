@@ -3,7 +3,7 @@ import math
 import tensorflow as tf
 from tensorflow.keras.mixed_precision import experimental as prec
 
-from common.state_models import RSSM, ReasonerMLP, DualNoCond
+from common.state_models import RSSM, ReasonerMLP, DualNoCond, RSSM_GIBBS
 from common.other import static_scan
 
 
@@ -50,7 +50,7 @@ class DualGibbs(DualNoCond):
     self._min_std = min_std
     self.feature_sets = [] if feature_sets is None else feature_sets
     self._cast = lambda x: tf.cast(x, prec.global_policy().compute_dtype)
-    self.subj_reasoner = RSSM(**subj_kws)
+    self.subj_reasoner = RSSM_GIBBS(**subj_kws)
     self.obj_reasoner = ReasonerMLP(**obj_kws)
     self._use_task_vector = use_task_vector
 
@@ -80,14 +80,17 @@ class DualGibbs(DualNoCond):
     # obj inference
     post_update_obj = emb_obj
     post_obj = self.obj_reasoner.obs_step(prev_state=prev_obj,
-                                          current_state=prior_obj,
+                                          current_state_obj=prior_obj,
                                           post_update=post_update_obj,
+                                          current_state_subj=prior_subj,
                                           sample=sample)
     # subj inference
     post_update_subj = emb_subj
     post_subj, _ = self.subj_reasoner.obs_step(prev_state=prev_subj,
                                                embed=post_update_subj,
                                                prev_action=action,
+                                               current_state_subj=prior_subj,
+                                               current_state_obj=prior_obj,
                                                sample=sample
     )
     return {'subj': post_subj, 'obj': post_obj}

@@ -4,8 +4,8 @@ from .dreamer import Dreamer
 from .dual_no_cond import DualWMNoCond
 from .dreamer_gibbs import DreamerGibbs
 from .wm import WM
-from .dual_gibbs import DualGibbs
+from .dual_gibbs import DualWMGibbs
 
 __all__ = [
-    'CEMA', 'CEMA_IB', 'Dreamer', 'DualWMNoCond', 'WM', 'DreamerGibbs', 'DualGibbs'
+    'CEMA', 'CEMA_IB', 'Dreamer', 'DualWMNoCond', 'WM', 'DreamerGibbs', 'DualWMGibbs'
 ]
