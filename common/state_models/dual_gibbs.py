@@ -64,6 +64,7 @@ class DualGibbs(DualNoCond):
     post = self.top_down_step(state, emb['obj'], emb['subj'],
                               action=action, prior_state=post,
                               sample=sample)
+    print('DualGibbs post 2', post)
     return post, prior
 
   @tf.function

@@ -1,5 +1,4 @@
-import tensorflow as tf
-from common.state_models import DualGibbs
+import common.state_models as models
 from common.nets import DualConvEncoder, ConvDecoder, MLP
 
 from dreamerv2.world_models import DualWMNoCond
@@ -9,7 +8,9 @@ class DualWMGibbs(DualWMNoCond):
   def __init__(self, step, config):
     super().__init__(step, config)
     shape = config.image_size + (config.img_channels,)
-    self.rssm = DualGibbs(
+    RSSM = getattr(models, config.rssm_name)
+    print('RSSM', RSSM)
+    self.rssm = RSSM(
       **config.rssm,
       subj_kws=config.subj_rssm, 
       obj_kws=config.obj_rssm,
