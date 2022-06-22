@@ -379,7 +379,6 @@ cw_dual_no_cond:
 
 cw_dual_gibbs:
   world_model: dual_gibbs
-  rssm_name: DualGibbsSeq
   grad_heads: [obj_image, subj_image, reward]
   feature_sets.policy: [task, subj, obj]
   feature_sets.value: [subj, obj]

@@ -8,7 +8,7 @@ class DualWMGibbs(DualWMNoCond):
   def __init__(self, step, config):
     super().__init__(step, config)
     shape = config.image_size + (config.img_channels,)
-    RSSM = getattr(models, config.rssm_name)
+    RSSM = getattr(models, 'DualGibbsSeq') #config.rssm_name)
     print('RSSM', RSSM)
     self.rssm = RSSM(
       **config.rssm,
