@@ -3,9 +3,7 @@ import math
 import tensorflow as tf
 from tensorflow.keras.mixed_precision import experimental as prec
 
-from common.state_models import RSSM, ReasonerMLP, DualNoCond, RSSM_GIBBS
-from common.other import static_scan
-
+from common.state_models import ReasonerMLPGibbs, DualNoCond, RSSM_GIBBS
 
 class DualGibbs(DualNoCond):
   def __init__(
@@ -51,7 +49,7 @@ class DualGibbs(DualNoCond):
     self.feature_sets = [] if feature_sets is None else feature_sets
     self._cast = lambda x: tf.cast(x, prec.global_policy().compute_dtype)
     self.subj_reasoner = RSSM_GIBBS(**subj_kws)
-    self.obj_reasoner = ReasonerMLP(**obj_kws)
+    self.obj_reasoner = ReasonerMLPGibbs(**obj_kws)
     self._use_task_vector = use_task_vector
 
 
