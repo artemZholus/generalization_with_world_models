@@ -1,5 +1,3 @@
-import math
-
 import tensorflow as tf
 from tensorflow.keras.mixed_precision import experimental as prec
 
