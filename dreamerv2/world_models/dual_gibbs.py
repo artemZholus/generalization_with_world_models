@@ -15,6 +15,8 @@ class DualWMGibbs(DualWMNoCond):
       subj_kws=config.subj_rssm, 
       obj_kws=config.obj_rssm,
       feature_sets=config.feature_sets,
+      rssm_obj=config.rssm_obj,
+      rssm_subj=config.rssm_subj,
     )
     self.encoder = DualConvEncoder(config.subj_encoder, config.obj_encoder, config.obj_features)
     self.heads['subj_image'] = ConvDecoder(shape, **config.decoder)

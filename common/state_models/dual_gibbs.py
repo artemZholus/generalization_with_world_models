@@ -2,6 +2,7 @@ import tensorflow as tf
 from tensorflow.keras.mixed_precision import experimental as prec
 
 from common.state_models import ReasonerMLPGibbs, DualNoCond, RSSM_GIBBS
+import common.state_models as models
 
 class DualGibbs(DualNoCond):
   def __init__(
@@ -11,7 +12,9 @@ class DualGibbs(DualNoCond):
     # per layer specific kwargs
     subj_kws=None, obj_kws=None,
     feature_sets=None,
-    use_task_vector=True
+    use_task_vector=True,
+    rssm_obj=None,
+    rssm_subj=None,
   ):
     if subj_kws is None:
       subj_kws = {}
@@ -46,10 +49,11 @@ class DualGibbs(DualNoCond):
     self._min_std = min_std
     self.feature_sets = [] if feature_sets is None else feature_sets
     self._cast = lambda x: tf.cast(x, prec.global_policy().compute_dtype)
-    self.subj_reasoner = RSSM_GIBBS(**subj_kws)
-    self.obj_reasoner = ReasonerMLPGibbs(**obj_kws)
+    RSSM_SUBJ= getattr(models, rssm_subj)
+    self.subj_reasoner = RSSM_SUBJ(**subj_kws)
+    RSSM_OBJ = getattr(models, rssm_obj)
+    self.obj_reasoner = RSSM_OBJ(**obj_kws)
     self._use_task_vector = use_task_vector
-
 
   @tf.function
   def obs_step(self, state, action, emb, task_vec=None, sample=True):
