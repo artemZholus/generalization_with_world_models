@@ -30,9 +30,10 @@ class RSSM_GIBBS(RSSM):
     else:
       prior = current_state_subj
     # x = tf.concat([prior['deter'], embed, current_state_obj['deter']], -1)
-    x = tf.concat([prior['deter'], embed], -1)
+    x = tf.concat([prior['deter'], embed, current_state_obj['deter'], tf.cast(current_state_obj['stoch'], tf.float16)], -1)
     print('RSSM_GIBBS x', x)
     x = self.get('obs_out', tfkl.Dense, self._hidden, self._act)(x)
+    print('RSSM_GIBBS x 2', x)
     stats = self._suff_stats_layer('obs_dist', x)
     dist = self.get_dist(stats)
     stoch = dist.sample() if sample else dist.mode()
