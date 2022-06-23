@@ -1,8 +1,9 @@
 import tensorflow as tf
 from tensorflow.keras.mixed_precision import experimental as prec
 
+import common.state_models
 from common.state_models import ReasonerMLPGibbs, DualNoCond, RSSM_GIBBS
-import common.state_models as models
+
 
 class DualGibbs(DualNoCond):
   def __init__(
@@ -49,9 +50,11 @@ class DualGibbs(DualNoCond):
     self._min_std = min_std
     self.feature_sets = [] if feature_sets is None else feature_sets
     self._cast = lambda x: tf.cast(x, prec.global_policy().compute_dtype)
-    RSSM_SUBJ= getattr(models, rssm_subj)
+    RSSM_SUBJ= getattr(common.state_models, rssm_subj)
+    print('RSSM_SUBJ', RSSM_SUBJ)
     self.subj_reasoner = RSSM_SUBJ(**subj_kws)
-    RSSM_OBJ = getattr(models, rssm_obj)
+    RSSM_OBJ = getattr(common.state_models, rssm_obj)
+    print('RSSM_OBJ', RSSM_OBJ)
     self.obj_reasoner = RSSM_OBJ(**obj_kws)
     self._use_task_vector = use_task_vector
 

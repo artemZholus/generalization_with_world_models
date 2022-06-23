@@ -84,6 +84,8 @@ defaults:
   obj_encoder: {depth: 48, act: elu, kernels: [4, 4, 4, 4], groups: 1, keys: [obj_image], rect: False}
   obj_rssm: {hidden: 400, deter: 400, stoch: 32, discrete: 32, act: elu, std_act: sigmoid2, min_std: 0.1}
   obj_features: 'img'
+  rssm_obj: ReasonerMLPGibbs
+  rssm_subj: RSSM_GIBBS
 
   # Actor Critic
   actor: {layers: 4, units: 400, act: elu, dist: trunc_normal, min_std: 0.1}
@@ -383,6 +385,8 @@ cw_dual_gibbs:
   feature_sets.policy: [task, subj, obj]
   feature_sets.value: [subj, obj]
   feature_sets.reward: [obj]
+  rssm_obj: ReasonerMLPGibbs
+  rssm_subj: RSSM_GIBBS
   rssm: {hidden: 200, deter: 200, stoch: 30, discrete: False, act: elu, std_act: sigmoid2, min_std: 0.1}
   subj_encoder: {depth: 32, act: elu, kernels: [4, 4, 4, 4], groups: 1, keys: [subj_image], rect: False}
   subj_rssm: {hidden: 200, deter: 200, stoch: 30, discrete: False, act: elu, std_act: sigmoid2, min_std: 0.1}
@@ -400,7 +404,7 @@ cw_dual_rssm_gibbs:
   feature_sets.policy: [task, subj, obj]
   feature_sets.value: [subj, obj]
   feature_sets.reward: [obj]
-  rssm_obj: ReasonerMLPGibbs
+  rssm_obj: RSSM_GIBBS
   rssm_subj: RSSM_GIBBS
   rssm: {hidden: 200, deter: 200, stoch: 30, discrete: False, act: elu, std_act: sigmoid2, min_std: 0.1}
   subj_encoder: {depth: 32, act: elu, kernels: [4, 4, 4, 4], groups: 1, keys: [subj_image], rect: False}
