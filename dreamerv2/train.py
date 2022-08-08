@@ -384,7 +384,7 @@ while step < config.steps:
   print('Start training.')
   train_driver(agnt.policy, steps=config.eval_every)
   agnt.save(logdir / 'variables.pkl')
-  model = wandb.Artifact('model', type='model')
+  model = wandb.Artifact(f'{wandb.run.name}_{wandb.run.id}', type='model')
   model.add_file(str(logdir / 'variables.pkl'))
   wandb.log_artifact(model)
 exit(0)

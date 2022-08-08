@@ -81,7 +81,7 @@ if config.precision == 16:
   prec.set_policy(prec.Policy('mixed_float16'))
 
 print('Logdir', logdir)
-model = wandb.Artifact('model', type='model')
+model = wandb.Artifact(f'{wandb.run.name}_{wandb.run.id}', type='model')
 model.add_file(str(logdir / 'variables.pkl'))
 wandb.log_artifact(model)
 exit(0)
