@@ -46,7 +46,7 @@ for name in parsed.configs:
 config = elements.FlagParser(config).parse(remaining)
 os.environ['CUDA_VISIBLE_DEVICES'] = str(config.gpu) #str(args.gpu)
 if config.logging.wdb:
-  wandb.init(entity='cds-mipt', project='oc_mbrl', config=common.flatten_conf(config), group=config.logging.exp_name,
+  wandb.init(entity='cds-mipt', project='cema_iclr', config=common.flatten_conf(config), group=config.logging.exp_name,
              name=config.logging.run_name, settings=wandb.Settings(start_method='thread'))
 if '$' in config.logdir:
   config = config.update({
@@ -384,6 +384,9 @@ while step < config.steps:
   print('Start training.')
   train_driver(agnt.policy, steps=config.eval_every)
   agnt.save(logdir / 'variables.pkl')
+  model = wandb.Artifact(f'{wandb.run.name}_{wandb.run.id}', type='model')
+  model.add_file(str(logdir / 'variables.pkl'))
+  wandb.log_artifact(model)
 exit(0)
 #for env in train_envs + eval_envs:
 #  try:

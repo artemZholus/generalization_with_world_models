@@ -68,7 +68,7 @@ class RSSM(common.StochPostPriorNet):
     return post, prior
 
   @tf.function
-  def imagine(self, action, state=None):
+  def imagine(self, action, state=None, **kws):
     swap = lambda x: tf.transpose(x, [1, 0] + list(range(2, len(x.shape))))
     if state is None:
       state = self.initial(tf.shape(action)[0])
@@ -614,7 +614,7 @@ class DualReasoner(RSSM):
     return {'subj': post_subj, 'obj': post_obj, 'util': post_util}
 
   def mut_inf(self, sample, kind='obj'):
-    NUM_SAMPLES = 3
+    NUM_SAMPLES = 1
     dist = self.get_dist(sample)
     stoch = dist[kind].sample(NUM_SAMPLES)
     curr_prob = dist[kind].log_prob(stoch)
