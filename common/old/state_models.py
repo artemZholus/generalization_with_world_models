@@ -27,12 +27,14 @@ class RSSM(common.StochPostPriorNet):
   def mut_inf(self, sample):
     NUM_SAMPLES = 1
     dist = self.get_dist(sample)
+    print('dist', dist.shape)
     stoch = dist.sample(NUM_SAMPLES)
     curr_prob = dist.log_prob(stoch)
     mu, sigma = sample['mean'], sample['std']
     mu = tf.expand_dims(mu, 2)
     sigma = tf.expand_dims(sigma, 2)
     expand_dist = self.get_dist({'mean': mu, 'std': sigma})
+    print('expand_dist', expand_dist.shape)
     stoch = tf.expand_dims(stoch, 2)
     prob = expand_dist.log_prob(stoch)
     marginal_prob = prob.logsumexp(2) - math.log(prob.shape[2])

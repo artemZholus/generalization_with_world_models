@@ -368,6 +368,8 @@ cw_dual_no_cond:
   feature_sets.policy: [task, subj, obj]
   feature_sets.value: [subj, obj]
   feature_sets.reward: [obj]
+  rssm_obj: ReasonerMLPGibbs
+  rssm_subj: RSSM_GIBBS
   rssm: {hidden: 200, deter: 200, stoch: 30, discrete: False, act: elu, std_act: sigmoid2, min_std: 0.1}
   subj_encoder: {depth: 32, act: elu, kernels: [4, 4, 4, 4], groups: 1, keys: [subj_image], rect: False}
   subj_rssm: {hidden: 200, deter: 200, stoch: 30, discrete: False, act: elu, std_act: sigmoid2, min_std: 0.1}

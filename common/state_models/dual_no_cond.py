@@ -207,7 +207,9 @@ class DualNoCond(RSSM):
 
   def mut_inf(self, sample, kind='obj'):
     NUM_SAMPLES = 1
+    # print('mut_inf sample', sample)
     dist = self.get_dist(sample)
+    # print('mut_inf dist', dist)
     stoch = dist[kind].sample(NUM_SAMPLES)
     curr_prob = dist[kind].log_prob(stoch)
     mu, sigma = sample[kind]['mean'], sample[kind]['std']
@@ -217,6 +219,7 @@ class DualNoCond(RSSM):
       expand_dist = self.obj_reasoner.get_dist({'mean': mu, 'std': sigma})
     elif kind == 'subj':
       expand_dist = self.subj_reasoner.get_dist({'mean': mu, 'std': sigma})
+    # print('mut_inf expand_dist', expand_dist)
     stoch = tf.expand_dims(stoch, 2)
     prob = expand_dist.log_prob(stoch)
     marginal_prob = prob.logsumexp(2) - math.log(prob.shape[2])
